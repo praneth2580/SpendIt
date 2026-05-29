@@ -16,8 +16,9 @@ export async function initCapacitor() {
         import('@capacitor/splash-screen'),
       ]);
 
+    await StatusBar.setOverlaysWebView({ overlay: true });
     await StatusBar.setStyle({ style: Style.Dark });
-    await StatusBar.setBackgroundColor({ color: '#000000' });
+    await StatusBar.setBackgroundColor({ color: '#00000000' });
 
     if (Capacitor.getPlatform() === 'ios') {
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });

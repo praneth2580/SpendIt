@@ -19,7 +19,7 @@ export default function Layout() {
       </div>
 
       <TopAppBar />
-      <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-28 pt-[4.75rem] md:px-8 md:pb-10 md:pt-20">
+      <main className="app-main relative z-10 mx-auto w-full max-w-6xl px-4 pb-28 md:px-8 md:pb-10">
         <div className="flex flex-col gap-6 animate-fade-in">
           <Outlet />
         </div>

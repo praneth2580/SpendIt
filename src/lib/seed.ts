@@ -1,29 +1,30 @@
 import type { AppSettings, Category, Transaction } from '../store/types';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  currency: 'USD',
+  currency: 'INR',
   theme: 'dark',
-  monthlyBudget: 6000,
-  startingNetWorth: 138405.5,
-  netWorthChangePercent: 12.4,
+  monthlyBudget: 50000,
+  startingNetWorth: 0,
+  netWorthChangePercent: 0,
   smsAutoImport: false,
   smsImportMode: 'confirm',
 };
 
+/** Common expense categories — no demo spend data. */
 export const DEFAULT_CATEGORIES: Category[] = [
   {
     id: 'food',
-    name: 'Food',
+    name: 'Food & Dining',
     spent: 0,
-    budget: 1500,
+    budget: 8000,
     icon: 'restaurant',
     color: 'tertiary',
   },
   {
-    id: 'transit',
-    name: 'Transit',
+    id: 'transport',
+    name: 'Transport',
     spent: 0,
-    budget: 800,
+    budget: 5000,
     icon: 'directions_car',
     color: 'secondary',
   },
@@ -31,115 +32,78 @@ export const DEFAULT_CATEGORIES: Category[] = [
     id: 'shopping',
     name: 'Shopping',
     spent: 0,
-    budget: 2000,
+    budget: 10000,
     icon: 'shopping_bag',
     color: 'primary',
   },
   {
     id: 'bills',
-    name: 'Bills',
+    name: 'Bills & Utilities',
     spent: 0,
-    budget: 1200,
+    budget: 8000,
     icon: 'receipt_long',
     color: 'primary',
   },
   {
-    id: 'travel',
-    name: 'Travel',
+    id: 'entertainment',
+    name: 'Entertainment',
     spent: 0,
-    budget: 2500,
-    icon: 'flight_takeoff',
+    budget: 4000,
+    icon: 'movie',
+    color: 'secondary',
+  },
+  {
+    id: 'health',
+    name: 'Health',
+    spent: 0,
+    budget: 5000,
+    icon: 'medical_services',
+    color: 'tertiary',
+  },
+  {
+    id: 'home',
+    name: 'Home & Rent',
+    spent: 0,
+    budget: 15000,
+    icon: 'home',
+    color: 'primary',
+  },
+  {
+    id: 'other',
+    name: 'Other',
+    spent: 0,
+    budget: 3000,
+    icon: 'more_horiz',
     color: 'secondary',
   },
 ];
 
 export const DEFAULT_ACCOUNTS = [
   {
-    id: 'checking-main',
-    name: 'Main Checking',
-    type: 'checking' as const,
-    icon: 'account_balance',
+    id: 'cash',
+    name: 'Cash',
+    type: 'cash' as const,
+    icon: 'payments',
     color: 'primary' as const,
-    startingBalance: 84200,
-    balance: 84200,
-  },
-  {
-    id: 'savings-emergency',
-    name: 'Emergency Savings',
-    type: 'savings' as const,
-    icon: 'savings',
-    color: 'secondary' as const,
-    startingBalance: 52000,
-    balance: 52000,
-  },
-  {
-    id: 'credit-card',
-    name: 'Credit Card',
-    type: 'credit' as const,
-    icon: 'credit_card',
-    color: 'tertiary' as const,
-    startingBalance: -2205.5,
-    balance: -2205.5,
+    startingBalance: 0,
+    balance: 0,
   },
 ];
 
-function hoursAgo(hours: number): string {
-  const date = new Date();
-  date.setHours(date.getHours() - hours);
-  return date.toISOString();
-}
-
-function daysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString();
-}
-
-export const DEFAULT_TRANSACTIONS: Transaction[] = [
-  {
-    id: 'seed-1',
-    merchant: 'Apple Store',
-    createdAt: hoursAgo(2),
-    amount: -1299,
-    icon: 'devices',
-    iconColor: 'white',
-    categoryId: 'shopping',
-    accountId: 'credit-card',
-    type: 'expense',
-  },
-  {
-    id: 'seed-2',
-    merchant: 'Salary Deposit',
-    createdAt: daysAgo(1),
-    amount: 5400,
-    icon: 'arrow_downward',
-    iconColor: 'secondary',
-    accountId: 'checking-main',
-    type: 'income',
-  },
-  {
-    id: 'seed-3',
-    merchant: 'Artisan Coffee',
-    createdAt: daysAgo(12),
-    amount: -6.5,
-    icon: 'local_cafe',
-    iconColor: 'white',
-    categoryId: 'food',
-    accountId: 'checking-main',
-    type: 'expense',
-  },
-];
+export const DEFAULT_TRANSACTIONS: Transaction[] = [];
 
 export const CATEGORY_ICON_OPTIONS = [
   'restaurant',
   'directions_car',
   'shopping_bag',
   'receipt_long',
+  'movie',
+  'medical_services',
+  'home',
+  'more_horiz',
   'flight_takeoff',
   'local_cafe',
-  'home',
   'fitness_center',
-  'medical_services',
   'school',
   'pets',
   'celebration',

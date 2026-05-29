@@ -30,6 +30,8 @@
     --header-bg: rgba(255, 255, 255, 0.75);
     --overlay: rgba(9, 9, 11, 0.45);
     --input-bg: #f4f4f5;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --app-header-bar: 4rem;
   }
 
   .dark {
@@ -72,7 +74,6 @@
   body {
     @apply bg-app text-fg font-sans;
     min-height: max(884px, 100dvh);
-    padding-top: env(safe-area-inset-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     transition:
@@ -86,6 +87,20 @@
 }
 
 @layer components {
+  .app-header {
+    padding-top: var(--safe-top);
+  }
+
+  .app-main {
+    padding-top: calc(var(--app-header-bar) + var(--safe-top) + 0.75rem);
+  }
+
+  @media (min-width: 768px) {
+    .app-main {
+      padding-top: calc(var(--app-header-bar) + var(--safe-top) + 1.25rem);
+    }
+  }
+
   .glass-panel {
     @apply bg-surface/80 backdrop-blur-xl border border-border shadow-card;
   }

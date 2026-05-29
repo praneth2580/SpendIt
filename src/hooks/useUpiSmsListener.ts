@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { UpiSmsMessage } from '../plugins/upi-sms';
+import { canAutoApplyImport, enrichPendingImport } from '../lib/extractionRules';
 import {
   addTransaction,
   markSmsProcessed,
@@ -26,42 +27,46 @@ export function useUpiSmsListener() {
     const processMessage = async (message: UpiSmsMessage) => {
       if (handlingRef.current) return;
 
-      const pending = rawMessageToPending(message);
-      if (!pending) return;
+      const raw = rawMessageToPending(message);
+      if (!raw) return;
 
-      const { processedSmsKeys, settings: liveSettings, categories, accounts } =
+      const { processedSmsKeys, settings: liveSettings, categories, accounts, extractionRules } =
         store.getState().app;
 
       if (!liveSettings.smsAutoImport) return;
-      if (processedSmsKeys.includes(pending.dedupeKey)) return;
+      if (processedSmsKeys.includes(raw.dedupeKey)) return;
+
+      const pending = enrichPendingImport(raw, extractionRules);
+      const { action } = pending;
 
       handlingRef.current = true;
       try {
         await dispatch(markSmsProcessed(pending.dedupeKey));
 
-        if (liveSettings.smsImportMode === 'auto') {
-          const category = categories[0];
-          const account = accounts[0];
-          if (!account || (pending.type === 'expense' && !category)) {
+        if (liveSettings.smsImportMode === 'auto' && canAutoApplyImport(action)) {
+          const category = categories.find((item) => item.id === action.categoryId);
+          const account = accounts.find((item) => item.id === action.accountId);
+
+          if (!account || (action.type === 'expense' && !category)) {
             await dispatch(setPendingUpiImport(pending));
             return;
           }
 
           await dispatch(
             addTransaction({
-              merchant: pending.merchant,
+              merchant: action.merchant,
               amount:
-                pending.type === 'expense'
+                action.type === 'expense'
                   ? -Math.abs(pending.amount)
                   : Math.abs(pending.amount),
               icon:
-                pending.type === 'income'
+                action.type === 'income'
                   ? 'arrow_downward'
                   : (category?.icon ?? 'payments'),
-              iconColor: pending.type === 'income' ? 'secondary' : 'white',
-              categoryId: pending.type === 'expense' ? category?.id : undefined,
+              iconColor: action.type === 'income' ? 'secondary' : 'white',
+              categoryId: action.type === 'expense' ? category?.id : undefined,
               accountId: account.id,
-              type: pending.type,
+              type: action.type,
             }),
           );
           return;

@@ -1,29 +1,45 @@
-import { App, type BackButtonListenerEvent } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { Keyboard, KeyboardResize } from '@capacitor/keyboard';
-import { SplashScreen } from '@capacitor/splash-screen';
-import { StatusBar, Style } from '@capacitor/status-bar';
+import type { BackButtonListenerEvent } from '@capacitor/app';
 
 export const isNative = Capacitor.isNativePlatform();
 export const isAndroid = Capacitor.getPlatform() === 'android';
 
+/** Native shell setup only — no-op on web/PWA. */
 export async function initCapacitor() {
   if (!isNative) return;
 
-  await StatusBar.setStyle({ style: Style.Dark });
-  await StatusBar.setBackgroundColor({ color: '#000000' });
+  try {
+    const [{ StatusBar, Style }, { Keyboard, KeyboardResize }, { SplashScreen }] =
+      await Promise.all([
+        import('@capacitor/status-bar'),
+        import('@capacitor/keyboard'),
+        import('@capacitor/splash-screen'),
+      ]);
 
-  if (Capacitor.getPlatform() === 'ios') {
-    await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
+    await StatusBar.setStyle({ style: Style.Dark });
+    await StatusBar.setBackgroundColor({ color: '#000000' });
+
+    if (Capacitor.getPlatform() === 'ios') {
+      await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
+    }
+
+    await SplashScreen.hide();
+  } catch (error) {
+    console.warn('[capacitor] init failed, continuing into app', error);
+    try {
+      const { SplashScreen } = await import('@capacitor/splash-screen');
+      await SplashScreen.hide();
+    } catch {
+      // ignore — web assets may not include native splash
+    }
   }
-
-  await SplashScreen.hide();
 }
 
-export function registerNativeBackButton(
+export async function registerNativeBackButton(
   handler: (event: BackButtonListenerEvent) => void,
 ) {
-  if (!isNative) return Promise.resolve(undefined);
+  if (!isNative) return undefined;
 
+  const { App } = await import('@capacitor/app');
   return App.addListener('backButton', handler);
 }

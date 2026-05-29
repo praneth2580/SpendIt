@@ -23,13 +23,18 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     searchParams.get('text') ??
     '';
   const urlType = searchParams.get('type') === 'income' ? 'income' : 'expense';
+  const urlCategoryId = searchParams.get('categoryId');
+  const urlAccountId = searchParams.get('accountId');
+  const hasPrefill = Boolean(initialAmount);
 
   const [typeOverride, setTypeOverride] = useState<'expense' | 'income' | null>(null);
   const [amount, setAmount] = useState(initialAmount);
   const [note, setNote] = useState(initialNote);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [showKeypad, setShowKeypad] = useState(true);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    urlCategoryId,
+  );
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(urlAccountId);
+  const [showKeypad, setShowKeypad] = useState(!hasPrefill);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
   const dispatch = useAppDispatch();
   const { categories, accounts, settings } = useAppSelector((state) => state.app);
@@ -37,8 +42,9 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
   const currencySymbol = getCurrencySymbol(settings.currency);
 
   const type = typeOverride ?? urlType;
-  const activeCategoryId = selectedCategoryId ?? categories[0]?.id ?? '';
-  const activeAccountId = selectedAccountId ?? accounts[0]?.id ?? '';
+  const activeCategoryId =
+    selectedCategoryId ?? urlCategoryId ?? categories[0]?.id ?? '';
+  const activeAccountId = selectedAccountId ?? urlAccountId ?? accounts[0]?.id ?? '';
   const selectedCategory = categories.find((c) => c.id === activeCategoryId);
   const selectedAccount = accounts.find((a) => a.id === activeAccountId);
 

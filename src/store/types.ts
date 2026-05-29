@@ -45,6 +45,43 @@ export interface AppSettings {
   smsImportMode: SmsImportMode;
 }
 
+export type ExtractionTransactionType = 'any' | 'expense' | 'income';
+
+export interface ExtractionRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Lower number is checked first */
+  priority: number;
+  senderPattern?: string;
+  bodyPattern?: string;
+  merchantPattern?: string;
+  transactionType: ExtractionTransactionType;
+  categoryId?: string;
+  accountId?: string;
+  /** Use {merchant} for parsed payee name */
+  noteTemplate?: string;
+  promptCategory: boolean;
+  promptAccount: boolean;
+  promptNote: boolean;
+}
+
+export type NewExtractionRule = Omit<ExtractionRule, 'id' | 'priority'> & {
+  priority?: number;
+};
+
+export interface PendingUpiImportAction {
+  ruleId?: string;
+  ruleName?: string;
+  categoryId?: string;
+  accountId?: string;
+  merchant: string;
+  type: 'expense' | 'income';
+  promptCategory: boolean;
+  promptAccount: boolean;
+  promptNote: boolean;
+}
+
 export interface PendingUpiImport {
   id: string;
   amount: number;
@@ -54,6 +91,7 @@ export interface PendingUpiImport {
   sender: string;
   timestamp: number;
   dedupeKey: string;
+  action: PendingUpiImportAction;
 }
 
 export interface UserSummary {
@@ -72,6 +110,7 @@ export interface AppDataState {
   accounts: Account[];
   pendingUpiImport: PendingUpiImport | null;
   processedSmsKeys: string[];
+  extractionRules: ExtractionRule[];
 }
 
 export type NewCategory = Omit<Category, 'id' | 'spent'>;

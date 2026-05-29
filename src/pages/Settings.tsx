@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { updateBudget, updateSettings } from '../store/appSlice';
+import { clearAppData, updateBudget, updateSettings } from '../store/appSlice';
 import { store } from '../store';
 import { isAndroid } from '../lib/capacitor';
 import {
@@ -15,6 +15,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import ThemeToggle from '../components/ui/ThemeToggle';
 import BottomSheet from '../components/BottomSheet';
+import ConfirmDialog from '../components/ConfirmDialog';
 import CategoryForm from '../components/CategoryForm';
 import AccountForm from '../components/AccountForm';
 
@@ -60,13 +61,22 @@ function MonthlyBudgetField({ monthlyBudget, onSave }: MonthlyBudgetFieldProps) 
 
 export default function Settings() {
   const dispatch = useAppDispatch();
-  const { settings, user, transactions, categories, accounts } = useAppSelector(
-    (state) => state.app,
-  );
+  const { settings, user, transactions, categories, accounts, extractionRules } =
+    useAppSelector((state) => state.app);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
   const [showAccountSheet, setShowAccountSheet] = useState(false);
   const [smsPermission, setSmsPermission] = useState<string | null>(null);
   const [smsBusy, setSmsBusy] = useState(false);
+  const [clearingDb, setClearingDb] = useState(false);
+  const [showClearDbDialog, setShowClearDbDialog] = useState(false);
+
+  const confirmClearDatabase = () => {
+    setClearingDb(true);
+    void dispatch(clearAppData())
+      .unwrap()
+      .then(() => setShowClearDbDialog(false))
+      .finally(() => setClearingDb(false));
+  };
 
   const refreshSmsPermission = async () => {
     if (!isAndroid) return;
@@ -158,6 +168,24 @@ export default function Settings() {
           </div>
         </Card>
       ) : null}
+
+      <Card>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-h2 font-semibold text-fg mb-1">Extraction rules</h2>
+            <p className="text-muted text-[13px]">
+              Map SMS patterns to category, account, and what to ask when importing.
+            </p>
+          </div>
+          <span className="text-muted text-[13px] tabular-nums shrink-0">
+            {extractionRules.length}
+          </span>
+        </div>
+        <Button to="/settings/extraction-rules" variant="secondary" fullWidth className="mt-4">
+          <span className="material-symbols-outlined text-[18px]">rule</span>
+          Manage rules
+        </Button>
+      </Card>
 
       <Card>
         <h2 className="text-h2 font-semibold text-fg mb-1">Appearance</h2>
@@ -309,8 +337,34 @@ export default function Settings() {
             <span className="material-symbols-outlined text-[18px]">download</span>
             Export data
           </Button>
+
+          <Button
+            variant="danger"
+            fullWidth
+            disabled={clearingDb}
+            onClick={() => setShowClearDbDialog(true)}
+          >
+            <span className="material-symbols-outlined text-[18px]">delete_forever</span>
+            Clear database
+          </Button>
+          <p className="text-subtle text-[12px] -mt-2">
+            Resets all local data to the default sample set.
+          </p>
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={showClearDbDialog}
+        title="Clear database?"
+        description="This will permanently delete all transactions, accounts, categories, and settings on this device. Your data will be reset to the default sample set. This cannot be undone."
+        confirmLabel="Clear database"
+        cancelLabel="Keep my data"
+        loading={clearingDb}
+        onConfirm={confirmClearDatabase}
+        onClose={() => {
+          if (!clearingDb) setShowClearDbDialog(false);
+        }}
+      />
 
       <BottomSheet open={showCategorySheet} title="New category" onClose={() => setShowCategorySheet(false)}>
         <CategoryForm

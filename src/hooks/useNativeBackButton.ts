@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { App } from '@capacitor/app';
 import type { PluginListenerHandle } from '@capacitor/core';
-import { registerNativeBackButton } from '../lib/capacitor';
+import { isNative, registerNativeBackButton } from '../lib/capacitor';
 
 export function useNativeBackButton() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!isNative) return;
+
     let listener: PluginListenerHandle | undefined;
 
     void registerNativeBackButton(({ canGoBack }) => {
@@ -16,7 +17,7 @@ export function useNativeBackButton() {
         return;
       }
 
-      void App.exitApp();
+      void import('@capacitor/app').then(({ App }) => App.exitApp());
     }).then((handle) => {
       listener = handle;
     });

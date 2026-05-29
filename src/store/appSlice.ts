@@ -9,11 +9,13 @@ import {
   syncCategorySpent,
 } from '../lib/aggregates';
 import {
+  clearDatabase,
   deleteStoredTransaction,
   loadPersistedData,
   saveAccount,
   saveAllCategories,
   saveCategory,
+  saveExtractionRules,
   saveSettings,
   saveSmsDedupeKeys,
   saveTransaction,
@@ -22,8 +24,10 @@ import type {
   AppDataState,
   AppSettings,
   Category,
+  ExtractionRule,
   NewAccount,
   NewCategory,
+  NewExtractionRule,
   PendingUpiImport,
   Transaction,
   UserSummary,
@@ -122,9 +126,10 @@ const initialState: AppDataState = {
   accounts: [],
   pendingUpiImport: null,
   processedSmsKeys: [],
+  extractionRules: [],
 };
 
-export const hydrateApp = createAsyncThunk('app/hydrate', async () => {
+async function loadAppState() {
   const data = await loadPersistedData();
   return {
     ...withDerivedState(
@@ -134,8 +139,16 @@ export const hydrateApp = createAsyncThunk('app/hydrate', async () => {
       data.settings,
     ),
     processedSmsKeys: data.processedSmsKeys,
-    pendingUpiImport: null,
+    extractionRules: data.extractionRules,
+    pendingUpiImport: null as PendingUpiImport | null,
   };
+}
+
+export const hydrateApp = createAsyncThunk('app/hydrate', loadAppState);
+
+export const clearAppData = createAsyncThunk('app/clearAppData', async () => {
+  await clearDatabase();
+  return loadAppState();
 });
 
 export const addTransaction = createAsyncThunk(
@@ -277,6 +290,75 @@ export const setPendingUpiImport = createAsyncThunk(
   async (pending: PendingUpiImport | null) => pending,
 );
 
+export const upsertExtractionRule = createAsyncThunk(
+  'app/upsertExtractionRule',
+  async (rule: NewExtractionRule & { id?: string }, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const existing = rule.id
+      ? state.app.extractionRules.find((item) => item.id === rule.id)
+      : undefined;
+
+    const nextRule: ExtractionRule = {
+      id: existing?.id ?? uuidv4(),
+      name: rule.name.trim(),
+      enabled: rule.enabled,
+      priority:
+        rule.priority ??
+        existing?.priority ??
+        (state.app.extractionRules.length > 0
+          ? Math.max(...state.app.extractionRules.map((item) => item.priority)) + 1
+          : 1),
+      senderPattern: rule.senderPattern?.trim() || undefined,
+      bodyPattern: rule.bodyPattern?.trim() || undefined,
+      merchantPattern: rule.merchantPattern?.trim() || undefined,
+      transactionType: rule.transactionType,
+      categoryId: rule.categoryId || undefined,
+      accountId: rule.accountId || undefined,
+      noteTemplate: rule.noteTemplate?.trim() || undefined,
+      promptCategory: rule.promptCategory,
+      promptAccount: rule.promptAccount,
+      promptNote: rule.promptNote,
+    };
+
+    const nextRules = existing
+      ? state.app.extractionRules.map((item) =>
+          item.id === nextRule.id ? nextRule : item,
+        )
+      : [...state.app.extractionRules, nextRule];
+
+    nextRules.sort((a, b) => a.priority - b.priority);
+    await saveExtractionRules(nextRules);
+    return nextRules;
+  },
+);
+
+export const deleteExtractionRule = createAsyncThunk(
+  'app/deleteExtractionRule',
+  async (id: string, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const nextRules = state.app.extractionRules.filter((rule) => rule.id !== id);
+    await saveExtractionRules(nextRules);
+    return nextRules;
+  },
+);
+
+export const reorderExtractionRules = createAsyncThunk(
+  'app/reorderExtractionRules',
+  async (orderedIds: string[], { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const byId = new Map(state.app.extractionRules.map((rule) => [rule.id, rule]));
+    const nextRules = orderedIds
+      .map((id, index) => {
+        const rule = byId.get(id);
+        return rule ? { ...rule, priority: index + 1 } : null;
+      })
+      .filter((rule): rule is ExtractionRule => rule != null);
+
+    await saveExtractionRules(nextRules);
+    return nextRules;
+  },
+);
+
 export const markSmsProcessed = createAsyncThunk(
   'app/markSmsProcessed',
   async (dedupeKey: string, { getState }) => {
@@ -334,7 +416,21 @@ const appSlice = createSlice({
       .addCase(updateSettings.fulfilled, (state, action) => ({
         ...state,
         ...action.payload,
-      }));
+      }))
+      .addCase(clearAppData.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
+        hydrated: true,
+      }))
+      .addCase(upsertExtractionRule.fulfilled, (state, action) => {
+        state.extractionRules = action.payload;
+      })
+      .addCase(deleteExtractionRule.fulfilled, (state, action) => {
+        state.extractionRules = action.payload;
+      })
+      .addCase(reorderExtractionRules.fulfilled, (state, action) => {
+        state.extractionRules = action.payload;
+      });
   },
 });
 

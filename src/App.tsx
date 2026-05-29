@@ -6,6 +6,7 @@ import Transactions from './pages/Transactions';
 import StatsInsights from './pages/StatsInsights';
 import AddTransactionSheetRoute from './pages/AddTransactionSheetRoute';
 import Settings from './pages/Settings';
+import ExtractionRulesSettings from './pages/ExtractionRulesSettings';
 import { useNativeBackButton } from './hooks/useNativeBackButton';
 import { getRouterBasename } from './lib/router';
 
@@ -21,6 +22,7 @@ function AppRoutes() {
         <Route path="add" element={<AddTransactionSheetRoute />} />
         <Route path="add-expense" element={<AddTransactionSheetRoute />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="settings/extraction-rules" element={<ExtractionRulesSettings />} />
       </Route>
     </Routes>
   );

@@ -4,7 +4,9 @@ import { isAndroid } from './capacitor';
 import { parseUpiSms } from './upiSmsParser';
 import type { PendingUpiImport } from '../store/types';
 
-export function rawMessageToPending(message: UpiSmsMessage): PendingUpiImport | null {
+export type RawUpiSmsPending = Omit<PendingUpiImport, 'action'>;
+
+export function rawMessageToPending(message: UpiSmsMessage): RawUpiSmsPending | null {
   const parsed = parseUpiSms(message.body, message.sender, message.timestamp);
   if (!parsed) return null;
 

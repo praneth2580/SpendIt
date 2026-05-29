@@ -1,5 +1,12 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Account, AppSettings, Category, Transaction } from '../store/types';
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type {
+  Account,
+  AppSettings,
+  Category,
+  ExtractionRule,
+  Transaction,
+} from '../store/types';
+import { DEFAULT_EXTRACTION_RULES } from './extractionRuleTemplates';
 import {
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
@@ -31,45 +38,73 @@ interface SpendtDB extends DBSchema {
     key: string;
     value: { key: string; seeded?: boolean; keys?: string[] };
   };
+  extractionRules: {
+    key: string;
+    value: ExtractionRule;
+  };
 }
 
 const DB_NAME = 'spendt';
-const DB_VERSION = 3;
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase<SpendtDB>> | null = null;
+
+function ensureAllStores(db: IDBPDatabase<SpendtDB>) {
+  if (!db.objectStoreNames.contains('transactions')) {
+    const transactionStore = db.createObjectStore('transactions', { keyPath: 'id' });
+    transactionStore.createIndex('by-createdAt', 'createdAt');
+  }
+
+  if (!db.objectStoreNames.contains('categories')) {
+    db.createObjectStore('categories', { keyPath: 'id' });
+  }
+
+  if (!db.objectStoreNames.contains('settings')) {
+    db.createObjectStore('settings', { keyPath: 'key' });
+  }
+
+  if (!db.objectStoreNames.contains('meta')) {
+    db.createObjectStore('meta', { keyPath: 'key' });
+  }
+
+  if (!db.objectStoreNames.contains('accounts')) {
+    db.createObjectStore('accounts', { keyPath: 'id' });
+  }
+
+  if (!db.objectStoreNames.contains('extractionRules')) {
+    db.createObjectStore('extractionRules', { keyPath: 'id' });
+  }
+}
 
 function getDb() {
   if (!dbPromise) {
     dbPromise = openDB<SpendtDB>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
-        if (oldVersion < 1) {
-          const transactionStore = db.createObjectStore('transactions', {
-            keyPath: 'id',
-          });
-          transactionStore.createIndex('by-createdAt', 'createdAt');
-          db.createObjectStore('categories', { keyPath: 'id' });
-          db.createObjectStore('settings', { keyPath: 'key' });
-          db.createObjectStore('meta', { keyPath: 'key' });
-        }
-
-        if (oldVersion < 2) {
-          db.createObjectStore('accounts', { keyPath: 'id' });
-        }
+      upgrade(db) {
+        ensureAllStores(db);
       },
+    }).catch((error) => {
+      dbPromise = null;
+      throw error;
     });
   }
 
   return dbPromise;
 }
 
+function hasExtractionRulesStore(db: IDBPDatabase<SpendtDB>) {
+  return db.objectStoreNames.contains('extractionRules');
+}
+
 async function ensureSeeded(db: IDBPDatabase<SpendtDB>) {
   const meta = await db.get('meta', 'seed');
   if (meta?.seeded) return;
 
-  const tx = db.transaction(
-    ['transactions', 'categories', 'accounts', 'settings', 'meta'],
-    'readwrite',
-  );
+  const storeNames: Array<
+    'transactions' | 'categories' | 'accounts' | 'settings' | 'meta' | 'extractionRules'
+  > = ['transactions', 'categories', 'accounts', 'settings', 'meta'];
+  if (hasExtractionRulesStore(db)) storeNames.push('extractionRules');
+
+  const tx = db.transaction(storeNames, 'readwrite');
 
   for (const transaction of DEFAULT_TRANSACTIONS) {
     await tx.objectStore('transactions').put(transaction);
@@ -83,8 +118,27 @@ async function ensureSeeded(db: IDBPDatabase<SpendtDB>) {
     await tx.objectStore('accounts').put(account);
   }
 
+  if (hasExtractionRulesStore(db)) {
+    for (const rule of DEFAULT_EXTRACTION_RULES) {
+      await tx.objectStore('extractionRules').put(rule);
+    }
+  }
+
   await tx.objectStore('settings').put({ key: 'app', ...DEFAULT_SETTINGS });
   await tx.objectStore('meta').put({ key: 'seed', seeded: true });
+  await tx.done;
+}
+
+async function ensureDefaultExtractionRules(db: IDBPDatabase<SpendtDB>) {
+  if (!hasExtractionRulesStore(db)) return;
+
+  const count = await db.count('extractionRules');
+  if (count > 0) return;
+
+  const tx = db.transaction('extractionRules', 'readwrite');
+  for (const rule of DEFAULT_EXTRACTION_RULES) {
+    await tx.store.put(rule);
+  }
   await tx.done;
 }
 
@@ -103,6 +157,14 @@ export async function loadPersistedData() {
   const db = await getDb();
   await ensureSeeded(db);
   await ensureAccounts(db);
+  await ensureDefaultExtractionRules(db);
+
+  let extractionRules: ExtractionRule[] = [];
+  try {
+    extractionRules = await db.getAll('extractionRules');
+  } catch {
+    extractionRules = [];
+  }
 
   const [transactions, categories, accounts, settingsRecord] = await Promise.all([
     db.getAllFromIndex('transactions', 'by-createdAt'),
@@ -134,7 +196,19 @@ export async function loadPersistedData() {
       smsImportMode: settings.smsImportMode ?? DEFAULT_SETTINGS.smsImportMode,
     },
     processedSmsKeys,
+    extractionRules: extractionRules.sort((a, b) => a.priority - b.priority),
   };
+}
+
+export async function saveExtractionRules(rules: ExtractionRule[]) {
+  const db = await getDb();
+  if (!hasExtractionRulesStore(db)) return;
+  const tx = db.transaction('extractionRules', 'readwrite');
+  await tx.store.clear();
+  for (const rule of rules) {
+    await tx.store.put(rule);
+  }
+  await tx.done;
 }
 
 export async function loadSmsDedupeKeys(): Promise<string[]> {
@@ -181,4 +255,12 @@ export async function saveAccount(account: Account) {
 export async function saveSettings(settings: AppSettings) {
   const db = await getDb();
   await db.put('settings', { key: 'app', ...settings });
+}
+
+/** Deletes IndexedDB and resets the connection so the next read re-seeds defaults. */
+export async function clearDatabase() {
+  const db = await getDb();
+  db.close();
+  dbPromise = null;
+  await deleteDB(DB_NAME);
 }

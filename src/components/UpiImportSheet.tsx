@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import clsx from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import BottomSheet from './BottomSheet';
 import Button from './ui/Button';
@@ -16,13 +17,38 @@ export default function UpiImportSheet() {
   const pending = useAppSelector((state) => state.app.pendingUpiImport);
   const { settings, categories, accounts } = useAppSelector((state) => state.app);
   const [note, setNote] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [accountId, setAccountId] = useState('');
   const [saving, setSaving] = useState(false);
 
-  if (!pending) return null;
+  const action = pending?.action;
 
-  const displayNote = note || pending.merchant;
-  const defaultCategory = categories[0];
-  const defaultAccount = accounts[0];
+  useEffect(() => {
+    if (!pending || !action) return;
+    setNote(action.promptNote ? '' : action.merchant);
+    setCategoryId(
+      action.categoryId ?? (pending.type === 'expense' ? (categories[0]?.id ?? '') : ''),
+    );
+    setAccountId(action.accountId ?? accounts[0]?.id ?? '');
+  }, [pending?.id, action, categories, accounts]);
+
+  if (!pending || !action) return null;
+
+  const showCategory =
+    pending.type === 'expense' && (action.promptCategory || !action.categoryId);
+  const showAccount = action.promptAccount || !action.accountId;
+  const showNote = action.promptNote;
+
+  const selectedCategory = categories.find((item) => item.id === categoryId);
+  const displayNote = (showNote ? note : action.merchant).trim() || action.merchant;
+
+  const pickerTile = (active: boolean) =>
+    clsx(
+      'shrink-0 rounded-2xl border p-3 flex flex-col items-center gap-2 transition-all min-w-[76px]',
+      active
+        ? 'border-brand/50 bg-brand-muted ring-2 ring-brand/20'
+        : 'border-border bg-surface-2 hover:bg-elevated',
+    );
 
   const dismiss = () => {
     void dispatch(markSmsProcessed(pending.dedupeKey));
@@ -30,9 +56,13 @@ export default function UpiImportSheet() {
   };
 
   const save = async () => {
-    if (!defaultAccount || (pending.type === 'expense' && !defaultCategory)) {
+    const resolvedAccountId = accountId || action.accountId;
+    const resolvedCategoryId =
+      pending.type === 'expense' ? categoryId || action.categoryId : undefined;
+
+    if (!resolvedAccountId || (pending.type === 'expense' && !resolvedCategoryId)) {
       navigate(
-        `/add-expense?amount=${pending.amount}&merchant=${encodeURIComponent(displayNote)}&type=${pending.type}`,
+        `/add-expense?amount=${pending.amount}&merchant=${encodeURIComponent(displayNote)}&type=${action.type}`,
       );
       dismiss();
       return;
@@ -44,17 +74,17 @@ export default function UpiImportSheet() {
         addTransaction({
           merchant: displayNote,
           amount:
-            pending.type === 'expense'
+            action.type === 'expense'
               ? -Math.abs(pending.amount)
               : Math.abs(pending.amount),
           icon:
-            pending.type === 'income'
+            action.type === 'income'
               ? 'arrow_downward'
-              : (defaultCategory?.icon ?? 'payments'),
-          iconColor: pending.type === 'income' ? 'secondary' : 'white',
-          categoryId: pending.type === 'expense' ? defaultCategory?.id : undefined,
-          accountId: defaultAccount.id,
-          type: pending.type,
+              : (selectedCategory?.icon ?? 'payments'),
+          iconColor: action.type === 'income' ? 'secondary' : 'white',
+          categoryId: resolvedCategoryId,
+          accountId: resolvedAccountId,
+          type: action.type,
         }),
       );
       await dispatch(markSmsProcessed(pending.dedupeKey));
@@ -65,11 +95,20 @@ export default function UpiImportSheet() {
   };
 
   const editInForm = () => {
-    navigate(
-      `/add-expense?amount=${pending.amount}&merchant=${encodeURIComponent(displayNote)}&type=${pending.type}`,
-    );
+    const params = new URLSearchParams({
+      amount: String(pending.amount),
+      merchant: displayNote,
+      type: action.type,
+    });
+    if (categoryId) params.set('categoryId', categoryId);
+    if (accountId) params.set('accountId', accountId);
+    navigate(`/add-expense?${params.toString()}`);
     dismiss();
   };
+
+  const canSave =
+    Boolean(accountId || action.accountId) &&
+    (pending.type !== 'expense' || Boolean(categoryId || action.categoryId));
 
   return (
     <BottomSheet
@@ -79,38 +118,112 @@ export default function UpiImportSheet() {
       maxWidthClassName="max-w-md"
     >
       <div className="px-4 pb-4 flex flex-col gap-4">
+        {action.ruleName ? (
+          <div className="rounded-xl bg-brand-muted border border-brand/25 px-3 py-2 text-[12px] text-brand">
+            Matched rule: <span className="font-semibold">{action.ruleName}</span>
+          </div>
+        ) : null}
+
         <div className="rounded-2xl bg-surface-2 border border-border p-4">
           <p className="text-muted text-[12px] uppercase tracking-wide">Amount</p>
           <p className="text-display font-bold text-fg tabular-nums mt-1">
             {formatCurrency(
-              pending.type === 'expense' ? -pending.amount : pending.amount,
+              action.type === 'expense' ? -pending.amount : pending.amount,
               settings.currency,
             )}
           </p>
-          <p className="text-muted text-[13px] mt-2 capitalize">{pending.type}</p>
+          <p className="text-muted text-[13px] mt-2 capitalize">{action.type}</p>
           {pending.sender ? (
             <p className="text-subtle text-[12px] mt-2 truncate">From {pending.sender}</p>
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <label htmlFor="upi-note" className="text-fg text-[13px] font-medium">
-            Name / note
-          </label>
-          <input
-            id="upi-note"
-            type="text"
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder={pending.merchant}
-            className="input-field"
-          />
-        </div>
+        {showAccount ? (
+          <div>
+            <p className="section-label mb-2">
+              Account
+              {action.promptAccount && action.accountId ? (
+                <span className="text-brand font-normal"> · confirm</span>
+              ) : null}
+            </p>
+            {accounts.length === 0 ? (
+              <p className="text-muted text-[13px]">Add an account in Settings first.</p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                {accounts.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => setAccountId(account.id)}
+                    className={pickerTile(account.id === accountId)}
+                  >
+                    <span className="material-symbols-outlined text-muted">{account.icon}</span>
+                    <span className="text-[11px] text-fg font-medium truncate w-full text-center">
+                      {account.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {showCategory ? (
+          <div>
+            <p className="section-label mb-2">
+              Category
+              {action.promptCategory && action.categoryId ? (
+                <span className="text-brand font-normal"> · confirm</span>
+              ) : null}
+            </p>
+            {categories.length === 0 ? (
+              <p className="text-muted text-[13px]">Add a category in Settings first.</p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => setCategoryId(category.id)}
+                    className={pickerTile(category.id === categoryId)}
+                  >
+                    <span className="material-symbols-outlined text-muted">{category.icon}</span>
+                    <span className="text-[11px] text-fg font-medium">{category.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {showNote ? (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="upi-note" className="text-fg text-[13px] font-medium">
+              Name / note
+              {action.promptNote ? (
+                <span className="text-brand font-normal"> · required</span>
+              ) : null}
+            </label>
+            <input
+              id="upi-note"
+              type="text"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder={action.merchant}
+              className="input-field"
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-surface-2 border border-border px-4 py-3">
+            <p className="text-subtle text-[12px]">Note</p>
+            <p className="text-fg text-[14px] mt-1">{action.merchant}</p>
+          </div>
+        )}
 
         <p className="text-subtle text-[12px] line-clamp-3">{pending.body}</p>
 
         <div className="flex flex-col gap-2">
-          <Button fullWidth disabled={saving} onClick={() => void save()}>
+          <Button fullWidth disabled={saving || !canSave} onClick={() => void save()}>
             Save transaction
           </Button>
           <Button variant="secondary" fullWidth onClick={editInForm}>

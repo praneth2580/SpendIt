@@ -7,7 +7,6 @@ const repoName = 'SpendIt'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const base = mode === 'ghpages' ? `/${repoName}/` : './'
-
   return {
     plugins: [
       react(),
@@ -66,10 +65,16 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2}'],
           navigateFallback: 'index.html',
-          navigateFallbackDenylist: [/^\/api\//],
+          navigateFallbackDenylist: [
+            /^\/api\//,
+            /^\/@/,
+            /^\/src\//,
+            /^\/node_modules\//,
+          ],
         },
         devOptions: {
-          enabled: true,
+          enabled: false,
+          suppressWarnings: true,
         },
       }),
     ],

@@ -1,70 +1,86 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import clsx from 'clsx';
 import Logo from './Logo';
+import { useTheme } from '../hooks/useTheme';
+import { resolveTheme } from '../lib/theme';
 
 function getPageTitle(pathname: string): string {
-  if (pathname === '/') return 'Dashboard';
+  if (pathname === '/') return 'Overview';
   if (pathname.startsWith('/transactions')) return 'Transactions';
   if (pathname.startsWith('/stats')) return 'Insights';
   if (pathname.startsWith('/settings')) return 'Settings';
-  if (pathname.startsWith('/add')) return 'Add Transaction';
+  if (pathname.startsWith('/add')) return 'Add';
   return 'Spendt';
 }
+
+const navItems = [
+  { to: '/', label: 'Home', icon: 'space_dashboard' },
+  { to: '/transactions', label: 'Activity', icon: 'receipt_long' },
+  { to: '/stats', label: 'Insights', icon: 'insights' },
+  { to: '/add', label: 'Add', icon: 'add_circle' },
+];
 
 export default function TopAppBar() {
   const { pathname } = useLocation();
   const title = getPageTitle(pathname);
+  const { theme, setTheme } = useTheme();
+  const isDark = resolveTheme(theme) === 'dark';
+
+  const toggleTheme = () => {
+    setTheme(isDark ? 'light' : 'dark');
+  };
 
   return (
-    <header className="bg-black/20 font-inter tracking-tight top-0 border-b border-white/10 backdrop-blur-xl flex justify-between items-center w-full px-4 md:px-8 h-14 fixed z-50">
-      <NavLink to="/" className="min-w-[120px] hover:opacity-90 transition-opacity">
-        <Logo size="sm" subtitle={title} />
-      </NavLink>
+    <header
+      className="fixed top-0 z-50 w-full border-b border-border px-4 md:px-8"
+      style={{ background: 'var(--header-bg)', backdropFilter: 'blur(16px)' }}
+    >
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4">
+        <NavLink to="/" className="min-w-0 hover:opacity-90 transition-opacity">
+          <Logo size="sm" subtitle={title} />
+        </NavLink>
 
-      <nav className="hidden md:flex gap-6 items-center absolute left-1/2 -translate-x-1/2">
-        <NavLink
-          to="/"
-          className={({ isActive }) =>
-            `font-label-caps text-label-caps uppercase hover:text-white transition-colors active:scale-95 duration-200 ${isActive ? 'text-primary-container' : 'text-on-surface-variant'}`
-          }
-        >
-          Home
-        </NavLink>
-        <NavLink
-          to="/transactions"
-          className={({ isActive }) =>
-            `font-label-caps text-label-caps uppercase hover:text-white transition-colors active:scale-95 duration-200 ${isActive ? 'text-primary-container' : 'text-on-surface-variant'}`
-          }
-        >
-          History
-        </NavLink>
-        <NavLink
-          to="/stats"
-          className={({ isActive }) =>
-            `font-label-caps text-label-caps uppercase hover:text-white transition-colors active:scale-95 duration-200 ${isActive ? 'text-primary-container' : 'text-on-surface-variant'}`
-          }
-        >
-          Stats
-        </NavLink>
-        <NavLink
-          to="/add"
-          className={({ isActive }) =>
-            `font-label-caps text-label-caps uppercase hover:text-white transition-colors active:scale-95 duration-200 ${isActive ? 'text-primary-container' : 'text-on-surface-variant'}`
-          }
-        >
-          Add
-        </NavLink>
-      </nav>
+        <nav className="hidden md:flex items-center gap-1 rounded-2xl bg-surface-2 border border-border p-1">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-all',
+                  isActive
+                    ? 'bg-surface text-fg shadow-card'
+                    : 'text-muted hover:text-fg',
+                )
+              }
+            >
+              <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
 
-      <div className="min-w-[120px] flex justify-end">
-        <NavLink
-          to="/settings"
-          className="h-9 w-9 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 transition-colors flex items-center justify-center"
-          aria-label="Settings"
-        >
-          <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
-            settings
-          </span>
-        </NavLink>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="h-10 w-10 rounded-2xl border border-border bg-surface-2 hover:bg-elevated transition-colors flex items-center justify-center"
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <span className="material-symbols-outlined text-[20px] text-muted">
+              {isDark ? 'light_mode' : 'dark_mode'}
+            </span>
+          </button>
+          <NavLink
+            to="/settings"
+            className="h-10 w-10 rounded-2xl border border-border bg-surface-2 hover:bg-elevated transition-colors flex items-center justify-center"
+            aria-label="Settings"
+          >
+            <span className="material-symbols-outlined text-[20px] text-muted">
+              settings
+            </span>
+          </NavLink>
+        </div>
       </div>
     </header>
   );

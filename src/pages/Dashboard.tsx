@@ -1,152 +1,245 @@
-import { useStore } from '../store/useStore';
 import { Link } from 'react-router-dom';
-import { formatTransactionDate } from '../lib/format';
+import { useAppSelector } from '../store/hooks';
+import { formatCurrency, getCurrentMonthLabel } from '../lib/format';
+import { categoryStyles } from '../lib/styles';
+import EmptyState from '../components/EmptyState';
+import TransactionRow, { CategoryChip } from '../components/FinanceCards';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
 
 export default function Dashboard() {
-  const { user, categories, transactions, settings } = useStore();
-
-  const monthlyBudgetTotal = categories.reduce(
-    (sum, category) => sum + category.budget,
-    0,
+  const { user, categories, transactions, settings, accounts } = useAppSelector(
+    (state) => state.app,
   );
-  const budgetSegments = categories.map((category) => ({
-    id: category.id,
-    width:
-      monthlyBudgetTotal > 0
-        ? (category.spent / monthlyBudgetTotal) * 100
-        : 0,
-    color: category.color,
-  }));
+
+  const currency = settings.currency;
+  const monthLabel = getCurrentMonthLabel();
+  const recentTransactions = transactions.slice(0, 5);
+  const sortedCategories = [...categories].sort((a, b) => b.spent - a.spent);
+  const budgetUsagePercent =
+    user.monthlyBudget > 0
+      ? Math.min(100, (user.monthlySpent / user.monthlyBudget) * 100)
+      : 0;
+  const categorySegments = sortedCategories
+    .filter((category) => category.spent > 0)
+    .map((category) => ({
+      id: category.id,
+      width:
+        user.monthlySpent > 0
+          ? (category.spent / user.monthlySpent) * budgetUsagePercent
+          : 0,
+      color: category.color,
+    }));
+  const trendIsPositive = user.netWorthChangePercent >= 0;
 
   return (
     <>
-      {/* Prominent Balance (Level 2 Glassmorphism) */}
-      <section className="relative rounded-xl p-5 overflow-hidden bg-white/5 backdrop-blur-[20px] border border-white/10 border-t-white/20 border-l-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-        <div className="absolute -top-20 -left-20 w-64 h-64 bg-primary-container/20 rounded-full blur-[80px] pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col gap-2">
-          <span className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Total Net Worth</span>
-          <div className="flex items-end gap-4">
-            <h2 className="font-display text-display text-white tracking-tighter">
-              ${user.totalNetWorth.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h2>
-            <span className="font-body-md text-body-md text-secondary-container mb-2 flex items-center bg-secondary-container/10 px-2 py-1 rounded-md">
-              <span className="material-symbols-outlined text-[16px] mr-1">trending_up</span> +{user.netWorthChangePercent}%
+      <Card variant="gradient" padding="lg" className="relative overflow-hidden">
+        <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-brand/20 blur-3xl pointer-events-none" />
+        <div className="relative">
+          <p className="section-label">Total balance</p>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <h1 className="text-display font-bold text-fg tabular-nums tracking-tight">
+              {formatCurrency(user.totalNetWorth, currency)}
+            </h1>
+            <span
+              className={`chip mb-1 ${
+                trendIsPositive
+                  ? 'bg-success-muted text-success'
+                  : 'bg-danger-muted text-danger'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">
+                {trendIsPositive ? 'trending_up' : 'trending_down'}
+              </span>
+              {trendIsPositive ? '+' : ''}
+              {user.netWorthChangePercent.toFixed(1)}%
             </span>
           </div>
-        </div>
-        
-        {/* Quick Actions inline */}
-        <div className="relative z-10 mt-5 flex gap-3">
-          <button className="min-h-[48px] flex-1 bg-primary-container text-on-primary-container font-h2 text-[14px] rounded-lg flex items-center justify-center gap-2 hover:bg-surface-tint transition-colors">
-            <span className="material-symbols-outlined">add</span> Deposit
-          </button>
-          <button className="min-h-[48px] flex-1 bg-transparent border border-white/10 text-white font-h2 text-[14px] rounded-lg flex items-center justify-center gap-2 hover:bg-white/5 transition-colors border-t-white/20 border-l-white/20">
-            <span className="material-symbols-outlined">send</span> Send
-          </button>
-        </div>
-      </section>
+          <p className="text-muted text-[13px] mt-2">{monthLabel}</p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Spending & Categories */}
+          <div className="mt-6 flex gap-3">
+            <Button to="/add?type=income" size="lg" className="flex-1">
+              <span className="material-symbols-outlined text-[20px]">add</span>
+              Income
+            </Button>
+            <Button to="/add?type=expense" variant="secondary" size="lg" className="flex-1">
+              <span className="material-symbols-outlined text-[20px]">remove</span>
+              Expense
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-6">
-          {/* Monthly Spending Summary Card (Level 1 Plate) */}
-          <section className="bg-surface-container rounded-xl p-5 border border-white/5 border-t-white/10 border-l-white/10">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-h2 text-h2 text-white">Monthly Summary</h3>
-              <button className="text-on-surface-variant hover:text-white transition-colors">
-                <span className="material-symbols-outlined">more_horiz</span>
-              </button>
+          <Card>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-h2 font-semibold text-fg">Monthly budget</h2>
+              <span className="text-muted text-[12px]">{monthLabel}</span>
             </div>
-            
-            <div className="flex items-center gap-5 mb-5">
-              <div className="flex flex-col">
-                <span className="font-label-caps text-label-caps text-outline uppercase mb-1">Spent</span>
-                <span className="font-h1 text-h1 text-white">
-                  ${user.monthlySpent.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </span>
-              </div>
-              <div className="w-px h-12 bg-white/10"></div>
-              <div className="flex flex-col">
-                <span className="font-label-caps text-label-caps text-outline uppercase mb-1">Budget</span>
-                <span className="font-h1 text-h1 text-on-surface-variant">
-                  ${user.monthlyBudget.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </span>
-              </div>
-            </div>
-            
-            <div className="w-full h-4 bg-background rounded-full overflow-hidden flex shadow-inner">
-              {budgetSegments.map((segment, index) => (
-                <div
-                  key={segment.id}
-                  className={`h-full bg-${segment.color}-container rounded-r-full ${index > 0 ? '-ml-2' : ''}`}
-                  style={{ width: `${Math.min(100, segment.width)}%` }}
-                />
-              ))}
-            </div>
-          </section>
 
-          {/* Category Spending Preview */}
-          <section>
-            <h3 className="font-h2 text-[16px] text-white mb-3 px-1">Spending by Category</h3>
-            <div className="flex overflow-x-auto gap-3 pb-3 snap-x hide-scrollbar">
-              {categories.map((category) => (
-                <div key={category.id} className="snap-start shrink-0 w-32 bg-surface-container rounded-xl p-3 border border-white/5 border-t-white/10 border-l-white/10 flex flex-col gap-2 hover:bg-surface-container-high transition-colors cursor-pointer">
-                  <div className={`w-10 h-10 rounded-full text-${category.color}-container bg-${category.color}-container/10 flex items-center justify-center border border-${category.color}-container/20`}>
-                    <span className="material-symbols-outlined">{category.icon}</span>
-                  </div>
-                  <div>
-                    <div className="font-label-caps text-label-caps text-on-surface-variant uppercase mb-1">{category.name}</div>
-                    <div className="font-body-lg text-body-lg text-white font-medium">
-                      ${category.spent.toLocaleString('en-US')}
-                    </div>
+            <div className="grid grid-cols-3 gap-4 mb-5">
+              {[
+                { label: 'Spent', value: user.monthlySpent, tone: 'text-fg' },
+                {
+                  label: 'Budget',
+                  value: user.monthlyBudget,
+                  tone: 'text-muted',
+                },
+                {
+                  label: 'Remaining',
+                  value: Math.max(0, user.monthlyBudget - user.monthlySpent),
+                  tone: 'text-success',
+                },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl bg-surface-2 p-3 border border-border">
+                  <div className="section-label">{item.label}</div>
+                  <div className={`text-h2 font-semibold tabular-nums mt-1 ${item.tone}`}>
+                    {formatCurrency(item.value, currency, { maximumFractionDigits: 0 })}
                   </div>
                 </div>
               ))}
-              
-              <div className="snap-start shrink-0 w-32 bg-surface-container rounded-xl p-3 border border-white/5 border-t-white/10 border-l-white/10 flex flex-col gap-3 hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center group">
-                <span className="material-symbols-outlined text-outline group-hover:text-white transition-colors text-[32px]">arrow_forward</span>
-              </div>
             </div>
+
+            <div className="flex justify-between text-[12px] text-muted mb-2 tabular-nums">
+              <span>{budgetUsagePercent.toFixed(0)}% used</span>
+              <span>{transactions.length} transactions</span>
+            </div>
+
+            <div className="h-2.5 rounded-full bg-surface-2 overflow-hidden flex">
+              {categorySegments.length > 0 ? (
+                categorySegments.map((segment, index) => (
+                  <div
+                    key={segment.id}
+                    className={`h-full ${categoryStyles[segment.color].bar} ${index > 0 ? '-ml-0.5' : ''}`}
+                    style={{ width: `${Math.max(0, segment.width)}%` }}
+                  />
+                ))
+              ) : (
+                <div
+                  className="h-full bg-brand rounded-full transition-all"
+                  style={{ width: `${budgetUsagePercent}%` }}
+                />
+              )}
+            </div>
+          </Card>
+
+          <section>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-h2 font-semibold text-fg">Accounts</h2>
+              <Link to="/settings" className="text-brand text-[13px] font-medium hover:underline">
+                Manage
+              </Link>
+            </div>
+            {accounts.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon="account_balance"
+                  title="No accounts"
+                  description="Add accounts to track balances separately."
+                  action={{ label: 'Add account', to: '/settings' }}
+                />
+              </Card>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
+                {accounts.map((account) => {
+                  const styles = categoryStyles[account.color];
+                  return (
+                    <Card key={account.id} padding="md" className="shrink-0 w-44 !p-4">
+                      <div
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center border mb-3 ${styles.bg} ${styles.border}`}
+                      >
+                        <span className={`material-symbols-outlined ${styles.text}`}>
+                          {account.icon}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted truncate">
+                        {account.name}
+                      </div>
+                      <div className="text-fg font-semibold tabular-nums mt-1">
+                        {formatCurrency(account.balance, currency, {
+                          maximumFractionDigits: 0,
+                        })}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-h2 font-semibold text-fg">Categories</h2>
+              <Link to="/stats" className="text-brand text-[13px] font-medium hover:underline">
+                View insights
+              </Link>
+            </div>
+            {sortedCategories.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon="category"
+                  title="No categories"
+                  description="Create categories to track spending."
+                  action={{ label: 'Add expense', to: '/add' }}
+                />
+              </Card>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
+                {sortedCategories.map((category) => (
+                  <CategoryChip
+                    key={category.id}
+                    category={category}
+                    currency={currency}
+                    to="/stats"
+                  />
+                ))}
+              </div>
+            )}
           </section>
         </div>
 
-        {/* Right Column: Recent Transactions */}
-        <div className="lg:col-span-1">
-          <section className="bg-surface-container rounded-xl p-5 border border-white/5 border-t-white/10 border-l-white/10 h-full">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-h2 text-[18px] text-white">Recent</h3>
-              <Link to="/transactions" className="font-label-caps text-label-caps text-primary-container hover:text-white transition-colors uppercase">See All</Link>
+        <div>
+          <Card className="h-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-h2 font-semibold text-fg">Recent</h2>
+              <Link to="/transactions" className="text-brand text-[13px] font-medium hover:underline">
+                See all
+              </Link>
             </div>
-            
-            <div className="flex flex-col gap-4">
-              {transactions.slice(0, 3).map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between group cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                      transaction.iconColor === 'white' 
-                        ? 'bg-white/5 border border-white/10 group-hover:bg-white/10' 
-                        : `bg-${transaction.iconColor}-container/10 border border-${transaction.iconColor}-container/20 group-hover:bg-${transaction.iconColor}-container/20`
-                    }`}>
-                      <span className={`material-symbols-outlined text-${transaction.iconColor === 'white' ? 'white' : transaction.iconColor + '-container'}`}>
-                        {transaction.icon}
-                      </span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-body-lg text-body-lg text-white font-medium">{transaction.merchant}</span>
-                      <span className="font-body-md text-[14px] text-on-surface-variant">{formatTransactionDate(transaction.createdAt)}</span>
-                    </div>
-                  </div>
-                  <span className={`font-body-lg text-body-lg font-medium ${transaction.amount > 0 ? 'text-secondary-container' : 'text-white'}`}>
-                    {transaction.amount > 0 ? '+' : ''}{transaction.amount.toLocaleString('en-US', { style: 'currency', currency: settings.currency })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
+
+            {recentTransactions.length === 0 ? (
+              <EmptyState
+                icon="receipt_long"
+                title="No activity yet"
+                description="Your latest transactions appear here."
+                action={{ label: 'Add transaction', to: '/add' }}
+              />
+            ) : (
+              <div className="flex flex-col gap-1 -mx-1">
+                {recentTransactions.map((transaction) => (
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                    currency={currency}
+                    category={
+                      transaction.categoryId
+                        ? categories.find((c) => c.id === transaction.categoryId)
+                        : undefined
+                    }
+                    account={
+                      transaction.accountId
+                        ? accounts.find((a) => a.id === transaction.accountId)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
       </div>
-
-      {/* Add action is in BottomNavBar */}
     </>
   );
 }

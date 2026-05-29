@@ -3,11 +3,112 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-app: #f4f4f5;
+    --bg-surface: #ffffff;
+    --bg-surface-2: #fafafa;
+    --bg-elevated: #ffffff;
+    --text-primary: #09090b;
+    --text-muted: #52525b;
+    --text-subtle: #a1a1aa;
+    --border-default: rgba(9, 9, 11, 0.08);
+    --border-strong: rgba(9, 9, 11, 0.14);
+    --brand: #6366f1;
+    --brand-fg: #ffffff;
+    --brand-muted: rgba(99, 102, 241, 0.12);
+    --success: #059669;
+    --success-muted: rgba(5, 150, 105, 0.12);
+    --danger: #e11d48;
+    --danger-muted: rgba(225, 29, 72, 0.1);
+    --accent-violet: #7c3aed;
+    --accent-emerald: #059669;
+    --accent-amber: #d97706;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+    --shadow-float: 0 12px 40px rgba(0, 0, 0, 0.12);
+    --shadow-brand: 0 8px 24px rgba(99, 102, 241, 0.35);
+    --nav-bg: rgba(255, 255, 255, 0.82);
+    --header-bg: rgba(255, 255, 255, 0.75);
+    --overlay: rgba(9, 9, 11, 0.45);
+    --input-bg: #f4f4f5;
+  }
+
+  .dark {
+    --bg-app: #09090b;
+    --bg-surface: #121214;
+    --bg-surface-2: #18181b;
+    --bg-elevated: #1f1f23;
+    --text-primary: #fafafa;
+    --text-muted: #a1a1aa;
+    --text-subtle: #71717a;
+    --border-default: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --brand: #818cf8;
+    --brand-fg: #0f0f12;
+    --brand-muted: rgba(129, 140, 248, 0.16);
+    --success: #34d399;
+    --success-muted: rgba(52, 211, 153, 0.14);
+    --danger: #fb7185;
+    --danger-muted: rgba(251, 113, 133, 0.14);
+    --accent-violet: #a78bfa;
+    --accent-emerald: #34d399;
+    --accent-amber: #fbbf24;
+    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 40px rgba(0, 0, 0, 0.45);
+    --shadow-float: 0 20px 50px rgba(0, 0, 0, 0.55);
+    --shadow-brand: 0 8px 32px rgba(129, 140, 248, 0.28);
+    --nav-bg: rgba(9, 9, 11, 0.88);
+    --header-bg: rgba(9, 9, 11, 0.72);
+    --overlay: rgba(0, 0, 0, 0.6);
+    --input-bg: #18181b;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
   body {
+    @apply bg-app text-fg font-sans;
     min-height: max(884px, 100dvh);
     padding-top: env(safe-area-inset-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    transition:
+      background-color 0.25s ease,
+      color 0.25s ease;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 35%, transparent);
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-surface/80 backdrop-blur-xl border border-border shadow-card;
+  }
+
+  .page-title {
+    @apply text-h1 font-semibold text-fg tracking-tight;
+  }
+
+  .section-label {
+    @apply text-caption uppercase text-muted tracking-widest;
+  }
+
+  .input-field {
+    @apply w-full rounded-2xl border border-border bg-[var(--input-bg)] px-4 py-3 text-fg outline-none transition-colors placeholder:text-subtle;
+  }
+
+  .input-field:focus {
+    border-color: color-mix(in srgb, var(--brand) 50%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium;
   }
 }
 
@@ -15,10 +116,15 @@
   display: none;
 }
 
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @keyframes sheetUp {
   from {
-    transform: translateY(16px);
-    opacity: 0.9;
+    transform: translateY(20px);
+    opacity: 0;
   }
   to {
     transform: translateY(0);

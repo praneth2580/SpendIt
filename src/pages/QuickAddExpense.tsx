@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useState } from 'react';
+import clsx from 'clsx';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { addTransaction } from '../store/appSlice';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getCurrencySymbol } from '../lib/format';
+import BottomSheet from '../components/BottomSheet';
+import CategoryForm from '../components/CategoryForm';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
 
 type QuickAddExpenseProps = {
   embedded?: boolean;
@@ -10,25 +17,30 @@ type QuickAddExpenseProps = {
 export default function QuickAddExpense({ embedded = false, onDone }: QuickAddExpenseProps) {
   const [searchParams] = useSearchParams();
   const initialAmount = searchParams.get('amount') ?? '';
-  const initialNote = searchParams.get('merchant') ?? searchParams.get('note') ?? '';
+  const initialNote =
+    searchParams.get('merchant') ??
+    searchParams.get('note') ??
+    searchParams.get('text') ??
+    '';
+  const urlType = searchParams.get('type') === 'income' ? 'income' : 'expense';
 
-  const [type, setType] = useState<'expense' | 'income'>('expense');
+  const [typeOverride, setTypeOverride] = useState<'expense' | 'income' | null>(null);
   const [amount, setAmount] = useState(initialAmount);
   const [note, setNote] = useState(initialNote);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [showKeypad, setShowKeypad] = useState(true);
-  const { addTransaction, categories } = useStore();
+  const [showCategorySheet, setShowCategorySheet] = useState(false);
+  const dispatch = useAppDispatch();
+  const { categories, accounts, settings } = useAppSelector((state) => state.app);
   const navigate = useNavigate();
+  const currencySymbol = getCurrencySymbol(settings.currency);
 
-  useEffect(() => {
-    if (categories.length > 0 && !selectedCategoryId) {
-      setSelectedCategoryId(categories[0].id);
-    }
-  }, [categories, selectedCategoryId]);
-
-  const selectedCategory =
-    categories.find((category) => category.id === selectedCategoryId) ??
-    categories[0];
+  const type = typeOverride ?? urlType;
+  const activeCategoryId = selectedCategoryId ?? categories[0]?.id ?? '';
+  const activeAccountId = selectedAccountId ?? accounts[0]?.id ?? '';
+  const selectedCategory = categories.find((c) => c.id === activeCategoryId);
+  const selectedAccount = accounts.find((a) => a.id === activeAccountId);
 
   const parsedAmount = Number.parseFloat(amount);
   const amountIsValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
@@ -41,10 +53,6 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     return `${intPart}.${dec.slice(0, 2)}`;
   };
 
-  const keypadAppend = (ch: string) => setAmount((prev) => clampAmountString(prev + ch));
-  const keypadBackspace = () => setAmount((prev) => prev.slice(0, -1));
-  const keypadClear = () => setAmount('');
-
   const formatDisplayAmount = (raw: string) => {
     if (!raw) return '0.00';
     const n = Number.parseFloat(raw);
@@ -54,204 +62,217 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amountIsValid || !selectedCategory) return;
+    if (!amountIsValid || (type === 'expense' && !selectedCategory) || !selectedAccount) return;
 
-    await addTransaction({
-      merchant: note.trim() || selectedCategory.name,
-      amount: type === 'expense' ? -Math.abs(parsedAmount) : Math.abs(parsedAmount),
-      icon: selectedCategory.icon,
-      iconColor: 'white',
-      categoryId: type === 'expense' ? selectedCategory.id : undefined,
-      type,
-    });
+    await dispatch(
+      addTransaction({
+        merchant:
+          note.trim() ||
+          (type === 'income' ? 'Income' : (selectedCategory?.name ?? 'Expense')),
+        amount: type === 'expense' ? -Math.abs(parsedAmount) : Math.abs(parsedAmount),
+        icon: type === 'income' ? 'arrow_downward' : (selectedCategory?.icon ?? 'payments'),
+        iconColor: type === 'income' ? 'secondary' : 'white',
+        categoryId: type === 'expense' ? selectedCategory?.id : undefined,
+        accountId: selectedAccount.id,
+        type,
+      }),
+    );
 
     if (onDone) onDone();
     else navigate('/');
   };
 
+  const pickerTile = (active: boolean) =>
+    clsx(
+      'shrink-0 rounded-2xl border p-3 flex flex-col items-center gap-2 transition-all min-w-[76px]',
+      active
+        ? 'border-brand/50 bg-brand-muted ring-2 ring-brand/20'
+        : 'border-border bg-surface-2 hover:bg-elevated',
+    );
+
   return (
     <div className={embedded ? 'w-full' : 'max-w-md mx-auto w-full'}>
-      <form
-        onSubmit={handleSubmit}
-        className={
-          embedded
-            ? 'flex flex-col gap-5'
-            : 'min-h-[calc(100dvh-160px)] flex flex-col gap-5 bg-surface-container rounded-2xl p-4 border border-white/5 border-t-white/10 border-l-white/10'
-        }
-      >
-        <div className="flex justify-center">
-          <div className="bg-black/30 border border-white/10 rounded-full p-1 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <div className="flex p-1 rounded-2xl bg-surface-2 border border-border">
+          {(['expense', 'income'] as const).map((t) => (
             <button
+              key={t}
               type="button"
-              onClick={() => setType('expense')}
-              className={`px-6 py-2 rounded-full font-body-md text-[14px] transition-colors ${
-                type === 'expense'
-                  ? 'bg-surface-container-high text-white'
-                  : 'text-on-surface-variant hover:text-white'
-              }`}
+              onClick={() => setTypeOverride(t)}
+              className={clsx(
+                'flex-1 py-2.5 rounded-xl text-[14px] font-medium capitalize transition-all',
+                type === t ? 'bg-surface text-fg shadow-card' : 'text-muted',
+              )}
             >
-              Expense
+              {t}
             </button>
-            <button
-              type="button"
-              onClick={() => setType('income')}
-              className={`px-6 py-2 rounded-full font-body-md text-[14px] transition-colors ${
-                type === 'income'
-                  ? 'bg-surface-container-high text-white'
-                  : 'text-on-surface-variant hover:text-white'
-              }`}
-            >
-              Income
-            </button>
-          </div>
+          ))}
         </div>
 
         <button
           type="button"
           onClick={() => setShowKeypad(true)}
-          className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 hover:bg-white/5 transition-colors"
-          aria-label="Edit amount"
+          className="w-full rounded-3xl border border-border bg-surface-2 p-6 text-center hover:bg-elevated transition-colors"
         >
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-on-surface-variant text-[18px] font-medium">$</span>
-            <span className="text-white text-[40px] leading-none font-semibold tracking-tight tabular-nums">
-              {formatDisplayAmount(amount)}
-            </span>
+          <span className="text-muted text-[15px]">{currencySymbol}</span>
+          <div className="text-display font-bold text-fg tabular-nums tracking-tight mt-1">
+            {formatDisplayAmount(amount)}
           </div>
-          <div className="mt-1 text-center text-[11px] text-on-surface-variant">
-            Tap to edit amount
-          </div>
+          <p className="text-subtle text-[12px] mt-2">Tap to edit amount</p>
         </button>
 
         {showKeypad ? (
-          <>
+          <Card padding="md">
             <div className="grid grid-cols-3 gap-2">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((key) => (
                 <button
-                  key={d}
+                  key={key}
                   type="button"
-                  onClick={() => keypadAppend(d)}
-                  className="h-12 rounded-2xl bg-black/20 border border-white/10 text-white text-[18px] font-medium hover:bg-white/5 active:bg-white/10 transition-colors"
+                  onClick={() => {
+                    if (key === 'back') setAmount((p) => p.slice(0, -1));
+                    else setAmount((p) => clampAmountString(p + (key === '.' ? '.' : key)));
+                  }}
+                  className="h-12 rounded-2xl bg-surface-2 border border-border text-fg font-medium hover:bg-elevated active:scale-95 transition-all flex items-center justify-center"
                 >
-                  {d}
+                  {key === 'back' ? (
+                    <span className="material-symbols-outlined">backspace</span>
+                  ) : (
+                    key
+                  )}
                 </button>
               ))}
-              <button
-                type="button"
-                onClick={() => keypadAppend('.')}
-                className="h-12 rounded-2xl bg-black/20 border border-white/10 text-white text-[18px] font-medium hover:bg-white/5 active:bg-white/10 transition-colors"
-              >
-                .
-              </button>
-              <button
-                type="button"
-                onClick={() => keypadAppend('0')}
-                className="h-12 rounded-2xl bg-black/20 border border-white/10 text-white text-[18px] font-medium hover:bg-white/5 active:bg-white/10 transition-colors"
-              >
-                0
-              </button>
-              <button
-                type="button"
-                onClick={keypadBackspace}
-                className="h-12 rounded-2xl bg-black/20 border border-white/10 text-on-surface-variant hover:text-white hover:bg-white/5 active:bg-white/10 transition-colors flex items-center justify-center"
-                aria-label="Backspace"
-              >
-                <span className="material-symbols-outlined text-[22px]">backspace</span>
-              </button>
             </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={keypadClear}
-                className="h-11 flex-1 rounded-2xl bg-transparent border border-white/10 text-on-surface-variant hover:text-white hover:bg-white/5 active:bg-white/10 transition-colors"
-              >
+            <div className="flex gap-2 mt-3">
+              <Button type="button" variant="ghost" fullWidth onClick={() => setAmount('')}>
                 Clear
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                onClick={() => setShowKeypad(false)}
+                fullWidth
                 disabled={!amountIsValid}
-                className="h-11 flex-1 rounded-2xl bg-primary-container text-on-primary-container font-h2 text-[14px] hover:bg-surface-tint transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setShowKeypad(false)}
               >
-                Next
-              </button>
+                Continue
+              </Button>
             </div>
-          </>
+          </Card>
         ) : (
           <>
-            <div className="flex items-center justify-between">
-              <span className="text-on-surface-variant font-label-caps uppercase tracking-widest">Category</span>
-              <button
-                type="button"
-                className="text-on-surface-variant hover:text-white transition-colors"
-                aria-label="Edit categories"
-              >
-                <span className="material-symbols-outlined text-[18px]">edit</span>
-              </button>
-            </div>
-
-            <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
-              {categories.map((c) => {
-                const active = c.id === selectedCategoryId;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedCategoryId(c.id)}
-                    className={`shrink-0 w-[74px] rounded-2xl border transition-colors flex flex-col items-center justify-center py-3 gap-2 ${
-                      active
-                        ? 'border-primary-container/40 bg-primary-container/10'
-                        : 'border-white/10 bg-black/20 hover:bg-white/5'
-                    }`}
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        active ? 'bg-primary-container/10' : 'bg-white/5'
-                      } border border-white/10`}
+            <div>
+              <p className="section-label mb-2">Account</p>
+              {accounts.length === 0 ? (
+                <p className="text-muted text-[13px]">Add an account in Settings first.</p>
+              ) : (
+                <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                  {accounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => setSelectedAccountId(account.id)}
+                      className={pickerTile(account.id === activeAccountId)}
                     >
-                      <span className="material-symbols-outlined text-[20px] text-on-surface-variant">
-                        {c.icon}
+                      <span className="material-symbols-outlined text-muted">{account.icon}</span>
+                      <span className="text-[11px] text-fg font-medium truncate w-full text-center">
+                        {account.name}
                       </span>
-                    </div>
-                    <span className={`text-[11px] ${active ? 'text-white' : 'text-on-surface-variant'}`}>
-                      {c.name}
-                    </span>
-                  </button>
-                );
-              })}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="bg-background/60 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
-              <span className="material-symbols-outlined text-on-surface-variant">notes</span>
+            {type === 'expense' ? (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="section-label">Category</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowCategorySheet(true)}
+                    className="text-brand text-[12px] font-semibold"
+                  >
+                    + New
+                  </button>
+                </div>
+                {categories.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCategorySheet(true)}
+                    className="w-full py-4 rounded-2xl border border-dashed border-border text-muted text-[13px]"
+                  >
+                    Create your first category
+                  </button>
+                ) : (
+                  <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                    {categories.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedCategoryId(c.id)}
+                        className={pickerTile(c.id === activeCategoryId)}
+                      >
+                        <span className="material-symbols-outlined text-muted">{c.icon}</span>
+                        <span className="text-[11px] text-fg font-medium">{c.name}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setShowCategorySheet(true)}
+                      className="shrink-0 min-w-[76px] rounded-2xl border border-dashed border-border flex flex-col items-center justify-center gap-1 py-3 text-brand"
+                    >
+                      <span className="material-symbols-outlined">add</span>
+                      <span className="text-[11px]">New</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-success-muted border border-success/20 px-4 py-3 text-success text-[13px]">
+                Income will increase your account balance and net worth.
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3">
+              <span className="material-symbols-outlined text-muted">edit_note</span>
               <input
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="flex-1 bg-transparent text-white outline-none placeholder:text-on-surface-variant"
-                placeholder="Add a note (optional)"
+                className="flex-1 bg-transparent text-fg outline-none placeholder:text-subtle"
+                placeholder="Note (optional)"
               />
             </div>
 
-            <div className="mt-auto pt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowKeypad(true)}
-                className="min-h-[52px] w-[120px] bg-transparent border border-white/10 text-white rounded-2xl hover:bg-white/5 transition-colors"
-              >
+            <div className="flex gap-2 pt-1">
+              <Button type="button" variant="secondary" onClick={() => setShowKeypad(true)}>
                 Edit amount
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                disabled={!amountIsValid}
-                className="min-h-[52px] flex-1 bg-primary-container text-on-primary-container font-h2 text-[16px] rounded-2xl flex items-center justify-center hover:bg-surface-tint transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(0,229,255,0.14)]"
+                fullWidth
+                disabled={
+                  !amountIsValid || !selectedAccount || (type === 'expense' && !selectedCategory)
+                }
               >
-                Save {type === 'expense' ? 'Expense' : 'Income'}
-              </button>
+                Save {type === 'expense' ? 'expense' : 'income'}
+              </Button>
             </div>
           </>
         )}
       </form>
+
+      <BottomSheet
+        open={showCategorySheet}
+        title="New category"
+        onClose={() => setShowCategorySheet(false)}
+      >
+        <CategoryForm
+          onCreated={(id) => {
+            setSelectedCategoryId(id);
+            setShowCategorySheet(false);
+          }}
+          onCancel={() => setShowCategorySheet(false)}
+        />
+      </BottomSheet>
     </div>
   );
 }

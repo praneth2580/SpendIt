@@ -6,7 +6,6 @@ type BottomSheetProps = {
   title?: string;
   children: React.ReactNode;
   onClose: () => void;
-  /** Tailwind max width for sheet container */
   maxWidthClassName?: string;
 };
 
@@ -44,7 +43,8 @@ export default function BottomSheet({
     <div className="fixed inset-0 z-[100]">
       <button
         type="button"
-        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        className="absolute inset-0"
+        style={{ background: 'var(--overlay)' }}
         onClick={onClose}
         aria-label="Close"
       />
@@ -54,22 +54,24 @@ export default function BottomSheet({
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? titleId : undefined}
-          className={`${maxWidthClassName} w-full bg-surface-container border border-white/10 border-t-white/15 rounded-t-3xl shadow-[0_-20px_60px_rgba(0,0,0,0.65)] overflow-hidden animate-[sheetUp_220ms_ease-out]`}
+          className={`${maxWidthClassName} w-full bg-surface border border-border rounded-t-[1.75rem] shadow-float overflow-hidden animate-[sheetUp_220ms_ease-out]`}
         >
-          <div className="px-4 pt-3 pb-2">
-            <div className="mx-auto h-1 w-10 rounded-full bg-white/15" />
+          <div className="px-5 pt-4 pb-2">
+            <div className="mx-auto h-1 w-10 rounded-full bg-border-strong" />
             {title ? (
-              <div className="mt-2 flex items-center justify-between">
-                <h2 id={titleId} className="text-white font-h2 text-[16px]">
+              <div className="mt-3 flex items-center justify-between">
+                <h2 id={titleId} className="text-h2 font-semibold text-fg">
                   {title}
                 </h2>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-8 w-8 rounded-full hover:bg-white/5 active:bg-white/10 transition-colors flex items-center justify-center"
+                  className="h-9 w-9 rounded-xl hover:bg-surface-2 active:bg-elevated transition-colors flex items-center justify-center"
                   aria-label="Close sheet"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-on-surface-variant">close</span>
+                  <span className="material-symbols-outlined text-[20px] text-muted">
+                    close
+                  </span>
                 </button>
               </div>
             ) : null}
@@ -79,7 +81,6 @@ export default function BottomSheet({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }
-

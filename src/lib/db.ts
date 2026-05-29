@@ -1,10 +1,13 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { AppSettings, Category, Transaction } from '../store/useStore';
+import type { Account, AppSettings, Category, Transaction } from '../store/types';
 import {
+  DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
   DEFAULT_SETTINGS,
   DEFAULT_TRANSACTIONS,
 } from './seed';
+
+const MAX_SMS_DEDUPE_KEYS = 500;
 
 interface SpendtDB extends DBSchema {
   transactions: {
@@ -16,33 +19,42 @@ interface SpendtDB extends DBSchema {
     key: string;
     value: Category;
   };
+  accounts: {
+    key: string;
+    value: Account;
+  };
   settings: {
     key: string;
     value: AppSettings & { key: 'app' };
   };
   meta: {
     key: string;
-    value: { key: string; seeded: boolean };
+    value: { key: string; seeded?: boolean; keys?: string[] };
   };
 }
 
 const DB_NAME = 'spendt';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<SpendtDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
     dbPromise = openDB<SpendtDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        const transactionStore = db.createObjectStore('transactions', {
-          keyPath: 'id',
-        });
-        transactionStore.createIndex('by-createdAt', 'createdAt');
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const transactionStore = db.createObjectStore('transactions', {
+            keyPath: 'id',
+          });
+          transactionStore.createIndex('by-createdAt', 'createdAt');
+          db.createObjectStore('categories', { keyPath: 'id' });
+          db.createObjectStore('settings', { keyPath: 'key' });
+          db.createObjectStore('meta', { keyPath: 'key' });
+        }
 
-        db.createObjectStore('categories', { keyPath: 'id' });
-        db.createObjectStore('settings', { keyPath: 'key' });
-        db.createObjectStore('meta', { keyPath: 'key' });
+        if (oldVersion < 2) {
+          db.createObjectStore('accounts', { keyPath: 'id' });
+        }
       },
     });
   }
@@ -55,7 +67,7 @@ async function ensureSeeded(db: IDBPDatabase<SpendtDB>) {
   if (meta?.seeded) return;
 
   const tx = db.transaction(
-    ['transactions', 'categories', 'settings', 'meta'],
+    ['transactions', 'categories', 'accounts', 'settings', 'meta'],
     'readwrite',
   );
 
@@ -67,18 +79,35 @@ async function ensureSeeded(db: IDBPDatabase<SpendtDB>) {
     await tx.objectStore('categories').put(category);
   }
 
+  for (const account of DEFAULT_ACCOUNTS) {
+    await tx.objectStore('accounts').put(account);
+  }
+
   await tx.objectStore('settings').put({ key: 'app', ...DEFAULT_SETTINGS });
   await tx.objectStore('meta').put({ key: 'seed', seeded: true });
+  await tx.done;
+}
+
+async function ensureAccounts(db: IDBPDatabase<SpendtDB>) {
+  const accounts = await db.getAll('accounts');
+  if (accounts.length > 0) return;
+
+  const tx = db.transaction('accounts', 'readwrite');
+  for (const account of DEFAULT_ACCOUNTS) {
+    await tx.store.put(account);
+  }
   await tx.done;
 }
 
 export async function loadPersistedData() {
   const db = await getDb();
   await ensureSeeded(db);
+  await ensureAccounts(db);
 
-  const [transactions, categories, settingsRecord] = await Promise.all([
+  const [transactions, categories, accounts, settingsRecord] = await Promise.all([
     db.getAllFromIndex('transactions', 'by-createdAt'),
     db.getAll('categories'),
+    db.getAll('accounts'),
     db.get('settings', 'app'),
   ]);
 
@@ -88,18 +117,36 @@ export async function loadPersistedData() {
   );
 
   const settings = settingsRecord ?? { key: 'app' as const, ...DEFAULT_SETTINGS };
+  const smsKeysRecord = await db.get('meta', 'smsDedupe');
+  const processedSmsKeys = smsKeysRecord?.keys ?? [];
 
   return {
     transactions,
     categories,
+    accounts,
     settings: {
       currency: settings.currency,
       theme: settings.theme,
       monthlyBudget: settings.monthlyBudget,
       startingNetWorth: settings.startingNetWorth,
       netWorthChangePercent: settings.netWorthChangePercent,
+      smsAutoImport: settings.smsAutoImport ?? DEFAULT_SETTINGS.smsAutoImport,
+      smsImportMode: settings.smsImportMode ?? DEFAULT_SETTINGS.smsImportMode,
     },
+    processedSmsKeys,
   };
+}
+
+export async function loadSmsDedupeKeys(): Promise<string[]> {
+  const db = await getDb();
+  const record = await db.get('meta', 'smsDedupe');
+  return record?.keys ?? [];
+}
+
+export async function saveSmsDedupeKeys(keys: string[]) {
+  const db = await getDb();
+  const trimmed = keys.slice(-MAX_SMS_DEDUPE_KEYS);
+  await db.put('meta', { key: 'smsDedupe', keys: trimmed });
 }
 
 export async function saveTransaction(transaction: Transaction) {
@@ -124,6 +171,11 @@ export async function saveAllCategories(categories: Category[]) {
     ...categories.map((category) => tx.store.put(category)),
     tx.done,
   ]);
+}
+
+export async function saveAccount(account: Account) {
+  const db = await getDb();
+  await db.put('accounts', account);
 }
 
 export async function saveSettings(settings: AppSettings) {

@@ -1,51 +1,73 @@
 import { NavLink } from 'react-router-dom';
+import clsx from 'clsx';
+
+const items = [
+  { to: '/', label: 'Home', icon: 'space_dashboard' },
+  { to: '/transactions', label: 'Activity', icon: 'receipt_long' },
+  { to: '/add', label: 'Add', icon: 'add', fab: true },
+  { to: '/stats', label: 'Insights', icon: 'insights' },
+  { to: '/settings', label: 'Settings', icon: 'tune' },
+];
 
 export default function BottomNavBar() {
   return (
-    <nav className="bg-black/80 text-[10px] font-medium uppercase tracking-widest fixed bottom-0 left-0 w-full flex justify-around items-end px-4 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:hidden z-50 rounded-t-3xl border-t border-white/10 backdrop-blur-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.55)] transition-all duration-300">
-      <NavLink 
-        to="/" 
-        className={({isActive}) => `flex flex-col items-center justify-center transition-transform ${isActive ? 'text-primary-container scale-105' : 'text-on-surface-variant hover:text-white'}`}
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 md:hidden px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
+      aria-label="Main navigation"
+    >
+      <div
+        className="mx-auto flex max-w-lg items-end justify-around rounded-[1.75rem] border border-border px-2 py-2 shadow-float"
+        style={{ background: 'var(--nav-bg)', backdropFilter: 'blur(20px)' }}
       >
-        <span className="material-symbols-outlined mb-1">dashboard</span>
-        <span>Home</span>
-      </NavLink>
-      
-      <NavLink 
-        to="/transactions" 
-        className={({isActive}) => `flex flex-col items-center justify-center transition-transform ${isActive ? 'text-primary-container scale-105' : 'text-on-surface-variant hover:text-white'}`}
-      >
-        <span className="material-symbols-outlined mb-1">receipt_long</span>
-        <span>History</span>
-      </NavLink>
-
-      <NavLink
-        to="/add"
-        className={({ isActive }) =>
-          `-mt-6 flex flex-col items-center justify-center ${isActive ? 'text-primary-container' : 'text-white'}`
-        }
-        aria-label="Add transaction"
-      >
-        <div className="h-14 w-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-[0_0_26px_rgba(0,229,255,0.28)] border border-white/15 active:scale-95 transition-transform">
-          <span className="material-symbols-outlined text-[26px]">add</span>
-        </div>
-      </NavLink>
-      
-      <NavLink 
-        to="/stats" 
-        className={({isActive}) => `flex flex-col items-center justify-center transition-transform ${isActive ? 'text-primary-container scale-105' : 'text-on-surface-variant hover:text-white'}`}
-      >
-        <span className="material-symbols-outlined mb-1">leaderboard</span>
-        <span>Stats</span>
-      </NavLink>
-      
-      <NavLink 
-        to="/settings" 
-        className={({isActive}) => `flex flex-col items-center justify-center transition-transform ${isActive ? 'text-primary-container scale-105' : 'text-on-surface-variant hover:text-white'}`}
-      >
-        <span className="material-symbols-outlined mb-1">settings</span>
-        <span>Settings</span>
-      </NavLink>
+        {items.map((item) =>
+          item.fab ? (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className="-mt-7 flex flex-col items-center"
+              aria-label="Add transaction"
+            >
+              {({ isActive }) => (
+                <div
+                  className={clsx(
+                    'flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-brand transition-transform active:scale-95',
+                    isActive && 'ring-4 ring-brand/25',
+                  )}
+                >
+                  <span className="material-symbols-outlined text-[28px]">{item.icon}</span>
+                </div>
+              )}
+            </NavLink>
+          ) : (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className="flex min-w-[56px] flex-col items-center gap-0.5 py-1"
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={clsx(
+                      'material-symbols-outlined text-[22px] transition-colors',
+                      isActive ? 'text-brand' : 'text-muted',
+                    )}
+                  >
+                    {item.icon}
+                  </span>
+                  <span
+                    className={clsx(
+                      'text-[10px] font-medium',
+                      isActive ? 'text-brand' : 'text-subtle',
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          ),
+        )}
+      </div>
     </nav>
   );
 }

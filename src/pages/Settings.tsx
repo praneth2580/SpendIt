@@ -1,35 +1,273 @@
 import { useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { updateBudget, updateSettings } from '../store/appSlice';
+import { store } from '../store';
+import { isAndroid } from '../lib/capacitor';
+import {
+  getUpiSmsPermissionStatus,
+  requestUpiSmsPermission,
+} from '../lib/upiSms';
+import { formatCurrency } from '../lib/format';
+import type { SmsImportMode } from '../store/types';
+import { categoryStyles } from '../lib/styles';
+import { StatCard } from '../components/FinanceCards';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import ThemeToggle from '../components/ui/ThemeToggle';
+import BottomSheet from '../components/BottomSheet';
+import CategoryForm from '../components/CategoryForm';
+import AccountForm from '../components/AccountForm';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR'] as const;
 
-export default function Settings() {
-  const { settings, updateSettings, updateBudget } = useStore();
-  const [budgetInput, setBudgetInput] = useState(String(settings.monthlyBudget));
+type MonthlyBudgetFieldProps = {
+  monthlyBudget: number;
+  onSave: (amount: number) => void;
+};
 
-  const handleBudgetSave = () => {
-    const nextBudget = Number.parseFloat(budgetInput);
-    if (!Number.isFinite(nextBudget) || nextBudget <= 0) return;
-    void updateBudget(nextBudget);
+function MonthlyBudgetField({ monthlyBudget, onSave }: MonthlyBudgetFieldProps) {
+  const [budgetInput, setBudgetInput] = useState(String(monthlyBudget));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label htmlFor="monthly-budget" className="text-fg text-[13px] font-medium">
+        Monthly budget
+      </label>
+      <div className="flex gap-2">
+        <input
+          id="monthly-budget"
+          type="number"
+          min="1"
+          step="1"
+          value={budgetInput}
+          onChange={(event) => setBudgetInput(event.target.value)}
+          className="input-field"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            const next = Number.parseFloat(budgetInput);
+            if (Number.isFinite(next) && next > 0) onSave(next);
+          }}
+        >
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function Settings() {
+  const dispatch = useAppDispatch();
+  const { settings, user, transactions, categories, accounts } = useAppSelector(
+    (state) => state.app,
+  );
+  const [showCategorySheet, setShowCategorySheet] = useState(false);
+  const [showAccountSheet, setShowAccountSheet] = useState(false);
+  const [smsPermission, setSmsPermission] = useState<string | null>(null);
+  const [smsBusy, setSmsBusy] = useState(false);
+
+  const refreshSmsPermission = async () => {
+    if (!isAndroid) return;
+    const status = await getUpiSmsPermissionStatus();
+    setSmsPermission(status);
+  };
+
+  const toggleSmsImport = async (enabled: boolean) => {
+    if (!isAndroid) return;
+    setSmsBusy(true);
+    try {
+      if (enabled) {
+        const status = await requestUpiSmsPermission();
+        setSmsPermission(status);
+        if (status !== 'granted') return;
+      }
+      await dispatch(updateSettings({ smsAutoImport: enabled }));
+    } finally {
+      setSmsBusy(false);
+    }
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2 className="font-h1 text-h1 text-white">Settings</h2>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="page-title">Settings</h1>
+        <p className="text-muted text-[14px] mt-1">Manage your app and preferences</p>
+      </div>
 
-      <section className="bg-surface-container rounded-xl p-5 border border-white/5 border-t-white/10 border-l-white/10">
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard
+          label="Net worth"
+          value={formatCurrency(user.totalNetWorth, settings.currency, {
+            maximumFractionDigits: 0,
+          })}
+        />
+        <StatCard
+          label="Transactions"
+          value={String(transactions.length)}
+          hint={`${categories.length} categories · ${accounts.length} accounts`}
+          accent="success"
+        />
+      </div>
+
+      {isAndroid ? (
+        <Card>
+          <h2 className="text-h2 font-semibold text-fg mb-1">UPI SMS import</h2>
+          <p className="text-muted text-[13px] mb-4">
+            Detect bank/UPI debit and credit SMS on this device. Only works in the
+            Android app, not in the browser PWA.
+          </p>
+          <div className="flex flex-col gap-4">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span className="text-fg text-[14px]">Auto-import from SMS</span>
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-brand"
+                checked={settings.smsAutoImport}
+                disabled={smsBusy}
+                onChange={(event) => void toggleSmsImport(event.target.checked)}
+                onFocus={() => void refreshSmsPermission()}
+              />
+            </label>
+
+            {smsPermission && smsPermission !== 'granted' && settings.smsAutoImport ? (
+              <p className="text-amber-400 text-[12px]">
+                SMS permission is required. Toggle off and on again to grant access.
+              </p>
+            ) : null}
+
+            <div className="flex flex-col gap-2">
+              <span className="text-fg text-[13px] font-medium">When a payment SMS arrives</span>
+              <select
+                value={settings.smsImportMode}
+                disabled={!settings.smsAutoImport}
+                onChange={(event) =>
+                  void dispatch(
+                    updateSettings({
+                      smsImportMode: event.target.value as SmsImportMode,
+                    }),
+                  )
+                }
+                className="input-field"
+              >
+                <option value="confirm">Ask me to name it</option>
+                <option value="auto">Save automatically</option>
+              </select>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      <Card>
+        <h2 className="text-h2 font-semibold text-fg mb-1">Appearance</h2>
+        <p className="text-muted text-[13px] mb-4">Choose light, dark, or match your system</p>
+        <ThemeToggle />
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-h2 font-semibold text-fg">Accounts</h2>
+          <Button size="sm" variant="secondary" onClick={() => setShowAccountSheet(true)}>
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            Add
+          </Button>
+        </div>
+        {accounts.length === 0 ? (
+          <p className="text-muted text-[13px]">No accounts yet.</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {accounts.map((account) => {
+              const styles = categoryStyles[account.color];
+              return (
+                <div
+                  key={account.id}
+                  className="flex items-center justify-between gap-3 py-3 border-b border-border last:border-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${styles.bg} ${styles.border}`}
+                    >
+                      <span className={`material-symbols-outlined ${styles.text}`}>
+                        {account.icon}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-fg font-medium truncate">{account.name}</div>
+                      <div className="text-muted text-[12px] capitalize">{account.type}</div>
+                    </div>
+                  </div>
+                  <div className="text-fg font-semibold tabular-nums shrink-0">
+                    {formatCurrency(account.balance, settings.currency)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-h2 font-semibold text-fg">Categories</h2>
+          <Button size="sm" variant="secondary" onClick={() => setShowCategorySheet(true)}>
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            Add
+          </Button>
+        </div>
+        {categories.length === 0 ? (
+          <p className="text-muted text-[13px]">No categories yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {categories.map((category) => {
+              const styles = categoryStyles[category.color];
+              const percent =
+                category.budget > 0
+                  ? Math.min(100, (category.spent / category.budget) * 100)
+                  : 0;
+              return (
+                <div key={category.id} className="rounded-2xl bg-surface-2 border border-border p-3">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`material-symbols-outlined ${styles.text}`}>
+                        {category.icon}
+                      </span>
+                      <span className="text-fg font-medium truncate">{category.name}</span>
+                    </div>
+                    <span className="text-muted text-[12px] tabular-nums shrink-0">
+                      {formatCurrency(category.spent, settings.currency, {
+                        maximumFractionDigits: 0,
+                      })}{' '}
+                      /{' '}
+                      {formatCurrency(category.budget, settings.currency, {
+                        maximumFractionDigits: 0,
+                      })}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface overflow-hidden">
+                    <div className={`h-full ${styles.bar}`} style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <h2 className="text-h2 font-semibold text-fg mb-4">General</h2>
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <label htmlFor="currency" className="text-white font-medium">
+            <label htmlFor="currency" className="text-fg text-[13px] font-medium">
               Currency
             </label>
             <select
               id="currency"
               value={settings.currency}
               onChange={(event) =>
-                void updateSettings({ currency: event.target.value })
+                void dispatch(updateSettings({ currency: event.target.value }))
               }
-              className="bg-background/60 border border-white/10 rounded-xl px-4 py-3 text-white outline-none"
+              className="input-field"
             >
               {CURRENCIES.map((currency) => (
                 <option key={currency} value={currency}>
@@ -39,70 +277,59 @@ export default function Settings() {
             </select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="monthly-budget" className="text-white font-medium">
-              Monthly budget
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="monthly-budget"
-                type="number"
-                min="1"
-                step="1"
-                value={budgetInput}
-                onChange={(event) => setBudgetInput(event.target.value)}
-                className="flex-1 bg-background/60 border border-white/10 rounded-xl px-4 py-3 text-white outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleBudgetSave}
-                className="px-4 rounded-xl bg-primary-container text-on-primary-container font-medium hover:bg-surface-tint transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
+          <MonthlyBudgetField
+            key={settings.monthlyBudget}
+            monthlyBudget={settings.monthlyBudget}
+            onSave={(amount) => void dispatch(updateBudget(amount))}
+          />
+          <p className="text-muted text-[12px] -mt-2 tabular-nums">
+            {formatCurrency(user.monthlySpent, settings.currency, {
+              maximumFractionDigits: 0,
+            })}{' '}
+            spent this month
+          </p>
 
-          <div className="flex items-center justify-between py-2 border-t border-white/10">
-            <div className="flex flex-col">
-              <span className="text-white font-medium">Theme</span>
-              <span className="text-on-surface-variant text-[12px] capitalize">
-                {settings.theme}
-              </span>
-            </div>
-            <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
-              dark_mode
-            </span>
-          </div>
-
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            fullWidth
             onClick={() => {
+              const { settings, categories, transactions, accounts } = store.getState().app;
               const blob = new Blob(
-                [JSON.stringify(useStore.getState().transactions, null, 2)],
+                [JSON.stringify({ settings, categories, accounts, transactions }, null, 2)],
                 { type: 'application/json' },
               );
               const url = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.href = url;
-              link.download = 'spendt-transactions.json';
+              link.download = 'spendt-export.json';
               link.click();
               URL.revokeObjectURL(url);
             }}
-            className="py-4 flex items-center justify-between text-left hover:bg-white/5 active:bg-white/10 transition-colors -mx-3 px-3 rounded-lg border-t border-white/10"
           >
-            <div className="flex flex-col">
-              <span className="text-white font-medium">Export</span>
-              <span className="text-on-surface-variant text-[12px]">
-                Download transactions as JSON
-              </span>
-            </div>
-            <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
-              download
-            </span>
-          </button>
+            <span className="material-symbols-outlined text-[18px]">download</span>
+            Export data
+          </Button>
         </div>
-      </section>
+      </Card>
+
+      <BottomSheet open={showCategorySheet} title="New category" onClose={() => setShowCategorySheet(false)}>
+        <CategoryForm
+          onCreated={() => setShowCategorySheet(false)}
+          onCancel={() => setShowCategorySheet(false)}
+        />
+      </BottomSheet>
+
+      <BottomSheet
+        open={showAccountSheet}
+        title="New account"
+        onClose={() => setShowAccountSheet(false)}
+        maxWidthClassName="max-w-lg"
+      >
+        <AccountForm
+          onCreated={() => setShowAccountSheet(false)}
+          onCancel={() => setShowAccountSheet(false)}
+        />
+      </BottomSheet>
     </div>
   );
 }

@@ -1,83 +1,102 @@
-import { useStore } from '../store/useStore';
-import { formatTransactionDate } from '../lib/format';
+import { useMemo } from 'react';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { deleteTransaction } from '../store/appSlice';
+import {
+  computeMonthlyIncome,
+  getAccountMap,
+  getCategoryMap,
+} from '../lib/aggregates';
+import { formatCurrency, groupTransactionsByDate } from '../lib/format';
+import EmptyState from '../components/EmptyState';
+import TransactionRow, { StatCard } from '../components/FinanceCards';
+import Card from '../components/ui/Card';
 
 export default function Transactions() {
-  const { transactions, settings, deleteTransaction } = useStore();
+  const dispatch = useAppDispatch();
+  const { transactions, settings, categories, accounts, user } = useAppSelector(
+    (state) => state.app,
+  );
+  const currency = settings.currency;
+
+  const categoryMap = useMemo(() => getCategoryMap(categories), [categories]);
+  const accountMap = useMemo(() => getAccountMap(accounts), [accounts]);
+  const groupedTransactions = useMemo(
+    () => groupTransactionsByDate(transactions),
+    [transactions],
+  );
+  const monthlyIncome = useMemo(
+    () => computeMonthlyIncome(transactions),
+    [transactions],
+  );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex items-end justify-between gap-4">
-        <h2 className="font-h1 text-h1 text-white">Transactions</h2>
-        <div className="text-on-surface-variant text-[12px]">
-          {transactions.length} item{transactions.length === 1 ? '' : 's'}
+        <div>
+          <h1 className="page-title">Transactions</h1>
+          <p className="text-muted text-[14px] mt-1">
+            {transactions.length} total
+          </p>
         </div>
       </div>
 
-      <section className="bg-surface-container rounded-xl border border-white/5 border-t-white/10 border-l-white/10 overflow-hidden">
+      {transactions.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard
+            label="Income"
+            value={formatCurrency(monthlyIncome, currency, { maximumFractionDigits: 0 })}
+            accent="success"
+          />
+          <StatCard
+            label="Expenses"
+            value={formatCurrency(user.monthlySpent, currency, { maximumFractionDigits: 0 })}
+          />
+        </div>
+      ) : null}
+
+      <Card padding="none" className="overflow-hidden">
         {transactions.length === 0 ? (
-          <div className="p-6 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
-              <span className="material-symbols-outlined text-on-surface-variant">receipt_long</span>
-            </div>
-            <div className="text-white font-medium">No transactions yet</div>
-            <div className="text-on-surface-variant text-[12px] mt-1">
-              Tap “Add” to create your first one.
-            </div>
-          </div>
+          <EmptyState
+            icon="receipt_long"
+            title="No transactions"
+            description="Start tracking by adding your first entry."
+            action={{ label: 'Add transaction', to: '/add' }}
+          />
         ) : (
-          <div className="divide-y divide-white/10">
-            {transactions.map((transaction) => (
-              <button
-                key={transaction.id}
-                type="button"
-                onClick={() => {
-                  if (window.confirm(`Delete "${transaction.merchant}"?`)) {
-                    void deleteTransaction(transaction.id);
-                  }
-                }}
-                className="w-full text-left px-4 py-4 hover:bg-white/5 active:bg-white/10 transition-colors"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors shrink-0 ${
-                        transaction.iconColor === 'white'
-                          ? 'bg-white/5 border border-white/10'
-                          : `bg-${transaction.iconColor}-container/10 border border-${transaction.iconColor}-container/20`
-                      }`}
-                    >
-                      <span
-                        className={`material-symbols-outlined text-${
-                          transaction.iconColor === 'white' ? 'white' : transaction.iconColor + '-container'
-                        }`}
-                      >
-                        {transaction.icon}
-                      </span>
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-white font-medium truncate">{transaction.merchant}</span>
-                      <span className="text-on-surface-variant text-[12px]">{formatTransactionDate(transaction.createdAt)}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className={`font-body-lg text-body-lg font-medium ${
-                        transaction.amount > 0 ? 'text-secondary-container' : 'text-white'
-                      }`}
-                    >
-                      {transaction.amount > 0 ? '+' : ''}
-                      {transaction.amount.toLocaleString('en-US', { style: 'currency', currency: settings.currency })}
-                    </span>
-                    <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
-                      chevron_right
-                    </span>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+          groupedTransactions.map(([label, items]) => (
+            <div key={label}>
+              <div className="px-4 py-2.5 bg-surface-2 border-b border-border">
+                <span className="section-label">{label}</span>
+              </div>
+              <div className="px-3 py-1">
+                {items.map((transaction) => (
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                    currency={currency}
+                    category={
+                      transaction.categoryId
+                        ? categoryMap.get(transaction.categoryId)
+                        : undefined
+                    }
+                    account={
+                      transaction.accountId
+                        ? accountMap.get(transaction.accountId)
+                        : undefined
+                    }
+                    showChevron
+                    onClick={() => {
+                      if (window.confirm(`Delete "${transaction.merchant}"?`)) {
+                        void dispatch(deleteTransaction(transaction.id));
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
         )}
-      </section>
+      </Card>
     </div>
   );
 }

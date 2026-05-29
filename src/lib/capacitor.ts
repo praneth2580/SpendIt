@@ -5,6 +5,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
 export const isNative = Capacitor.isNativePlatform();
+export const isAndroid = Capacitor.getPlatform() === 'android';
 
 export async function initCapacitor() {
   if (!isNative) return;

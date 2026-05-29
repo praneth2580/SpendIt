@@ -8,15 +8,15 @@ type LogoProps = {
 };
 
 const sizeClasses = {
-  sm: 'h-8 w-8',
-  md: 'h-10 w-10',
+  sm: 'h-9 w-9',
+  md: 'h-11 w-11',
   lg: 'h-14 w-14',
 } as const;
 
 const wordmarkSizeClasses = {
-  sm: 'text-[15px]',
-  md: 'text-[17px]',
-  lg: 'text-[22px]',
+  sm: 'text-[16px]',
+  md: 'text-[18px]',
+  lg: 'text-[24px]',
 } as const;
 
 export default function Logo({
@@ -26,26 +26,28 @@ export default function Logo({
   className,
 }: LogoProps) {
   return (
-    <div className={clsx('flex items-center gap-2.5 min-w-0', className)}>
-      <img
-        src="/logo.svg"
-        alt=""
-        aria-hidden="true"
-        className={clsx(sizeClasses[size], 'shrink-0 rounded-[9px]')}
-      />
+    <div className={clsx('flex items-center gap-3 min-w-0', className)}>
+      <div
+        className={clsx(
+          sizeClasses[size],
+          'shrink-0 rounded-2xl bg-gradient-to-br from-brand to-accent-violet flex items-center justify-center shadow-brand',
+        )}
+      >
+        <span className="text-brand-fg font-bold text-[15px]">S</span>
+      </div>
 
       {showWordmark ? (
         <div className="flex flex-col leading-tight min-w-0">
           <span
             className={clsx(
-              'text-white font-semibold tracking-tight',
+              'text-fg font-semibold tracking-tight',
               wordmarkSizeClasses[size],
             )}
           >
             Spendt
           </span>
           {subtitle ? (
-            <span className="text-on-surface-variant text-[11px] font-medium truncate">
+            <span className="text-muted text-[11px] font-medium truncate">
               {subtitle}
             </span>
           ) : null}

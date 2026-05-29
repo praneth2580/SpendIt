@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import ThemeSync from './components/ThemeSync';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import StatsInsights from './pages/StatsInsights';
 import AddTransactionSheetRoute from './pages/AddTransactionSheetRoute';
 import Settings from './pages/Settings';
 import { useNativeBackButton } from './hooks/useNativeBackButton';
+import { getRouterBasename } from './lib/router';
 
 function AppRoutes() {
   useNativeBackButton();
@@ -26,7 +28,8 @@ function AppRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getRouterBasename()}>
+      <ThemeSync />
       <AppRoutes />
     </BrowserRouter>
   );

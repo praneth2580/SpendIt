@@ -21,12 +21,25 @@ public class UpiSmsPlugin extends Plugin {
 
     static final String SMS = "sms";
     private static UpiSmsPlugin instance;
+    private boolean inForeground = true;
 
     @Override
     public void load() {
         super.load();
         instance = this;
         flushQueue();
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        inForeground = true;
+    }
+
+    @Override
+    protected void handleOnPause() {
+        inForeground = false;
+        super.handleOnPause();
     }
 
     @Override
@@ -39,6 +52,10 @@ public class UpiSmsPlugin extends Plugin {
 
     public static UpiSmsPlugin getInstance() {
         return instance;
+    }
+
+    public boolean isInForeground() {
+        return inForeground;
     }
 
     public void deliverSms(JSObject payload) {

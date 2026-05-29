@@ -9,6 +9,7 @@ import {
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { store } from '../store';
 import { isAndroid } from '../lib/capacitor';
+import { syncNativeBackgroundSchedule } from '../lib/spendtBackgroundSync';
 import {
   drainPendingUpiSms,
   listenForUpiSms,
@@ -19,7 +20,13 @@ export function useUpiSmsListener() {
   const dispatch = useAppDispatch();
   const hydrated = useAppSelector((state) => state.app.hydrated);
   const settings = useAppSelector((state) => state.app.settings);
+  const recurringRules = useAppSelector((state) => state.app.recurringRules);
   const handlingRef = useRef(false);
+
+  useEffect(() => {
+    if (!hydrated || !isAndroid) return;
+    void syncNativeBackgroundSchedule(recurringRules, settings);
+  }, [hydrated, recurringRules, settings.smsAutoImport, settings.smsImportMode, settings.recurringApplyMode]);
 
   useEffect(() => {
     if (!hydrated || !isAndroid || !settings.smsAutoImport) return;

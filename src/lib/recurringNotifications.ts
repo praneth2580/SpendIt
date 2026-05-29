@@ -174,18 +174,23 @@ export async function syncRecurringNotifications(input: {
     if (!rule.active) continue;
     const due = new Date(rule.nextRunAt);
     if (Number.isNaN(due.getTime())) continue;
-    if (due.getTime() <= now) continue;
     if (due.getTime() - now > 365 * 24 * 60 * 60 * 1000) continue;
 
     const alreadyPending = pending.some((p) => p.ruleId === rule.id);
     if (alreadyPending) continue;
 
+    const isOverdue = due.getTime() <= now;
+    const scheduleAt = isOverdue ? new Date(now + 1_500) : due;
+
     notifications.push({
-      id: hashId(`schedule-${rule.id}-${due.getTime()}`, SCHEDULED_ID_BASE),
-      title: 'Recurring payment due',
-      body: `${rule.name} · ${ruleAmountLabel(rule, settings.currency)}. Tap to confirm or link.`,
+      id: hashId(
+        `schedule-${rule.id}-${isOverdue ? 'overdue' : due.getTime()}`,
+        SCHEDULED_ID_BASE,
+      ),
+      title: isOverdue ? 'Confirm recurring payment' : 'Recurring payment due',
+      body: `${rule.name} · ${ruleAmountLabel(rule, settings.currency)} is due. Tap to confirm or link.`,
       channelId: CHANNEL_ID,
-      schedule: { at: due, allowWhileIdle: true },
+      schedule: { at: scheduleAt, allowWhileIdle: true },
       extra: { ruleId: rule.id },
       autoCancel: true,
     });

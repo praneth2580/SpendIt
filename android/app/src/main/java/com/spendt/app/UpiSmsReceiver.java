@@ -45,11 +45,18 @@ public class UpiSmsReceiver extends BroadcastReceiver {
         payload.put("body", body.toString());
         payload.put("timestamp", timestamp);
 
+        Context appContext = context.getApplicationContext();
         UpiSmsPlugin plugin = UpiSmsPlugin.getInstance();
+        boolean appVisible = plugin != null && plugin.isInForeground();
+
         if (plugin != null) {
             plugin.deliverSms(payload);
         } else {
-            UpiSmsQueue.enqueue(context.getApplicationContext(), payload);
+            UpiSmsQueue.enqueue(appContext, payload);
+        }
+
+        if (!appVisible) {
+            SpendtNotificationHelper.showUpiSms(appContext, sender, body.toString());
         }
     }
 }

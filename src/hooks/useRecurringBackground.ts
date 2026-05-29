@@ -7,6 +7,7 @@ import {
   syncRecurringNotifications,
   type RecurringNotificationDetail,
 } from '../lib/recurringNotifications';
+import { syncNativeBackgroundSchedule } from '../lib/spendtBackgroundSync';
 import { refreshRecurring } from '../store/appSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 
@@ -32,6 +33,7 @@ export function useRecurringBackground() {
 
   useEffect(() => {
     if (!hydrated) return;
+    void dispatch(refreshRecurring());
     return registerRecurringNotificationHandlers((detail) => {
       void dispatch(refreshRecurring()).finally(() => openFromNotification(detail));
     });
@@ -45,6 +47,7 @@ export function useRecurringBackground() {
     lastSyncKey.current = syncKey;
 
     void syncRecurringNotifications({ rules, pending, settings });
+    void syncNativeBackgroundSchedule(rules, settings);
   }, [hydrated, pending, rules, settings]);
 
   useEffect(() => {
@@ -67,6 +70,7 @@ export function useRecurringBackground() {
           });
         } else {
           void syncRecurringNotifications({ rules, pending, settings });
+          void syncNativeBackgroundSchedule(rules, settings);
         }
       });
       remove = () => listener.remove();

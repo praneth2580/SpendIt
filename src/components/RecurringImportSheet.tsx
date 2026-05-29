@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { confirmRecurringPending, skipRecurringPending } from '../store/appSlice';
+import {
+  confirmRecurringPending,
+  refreshRecurring,
+  skipRecurringPending,
+} from '../store/appSlice';
 import { formatCurrency, formatTransactionDate } from '../lib/format';
 import { findMatchingTransaction } from '../lib/recurring';
 import BottomSheet from './BottomSheet';
@@ -11,11 +15,18 @@ import clsx from 'clsx';
 export default function RecurringImportSheet() {
   const dispatch = useAppDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { pendingRecurringQueue, recurringRules, transactions, settings, accounts, categories } =
+  const { pendingRecurringQueue, recurringRules, transactions, settings, accounts, categories, hydrated } =
     useAppSelector((s) => s.app);
 
   const focusPendingId = searchParams.get('recurringPending');
   const focusRuleId = searchParams.get('recurringRule');
+  const awaitingRecurring =
+    hydrated && (focusPendingId != null || focusRuleId != null) && pendingRecurringQueue.length === 0;
+
+  useEffect(() => {
+    if (!awaitingRecurring) return;
+    void dispatch(refreshRecurring());
+  }, [awaitingRecurring, dispatch]);
 
   const pending = useMemo(() => {
     if (focusPendingId) {
@@ -62,6 +73,14 @@ export default function RecurringImportSheet() {
   }, [rule, dueAtIso, transactions, settings]);
 
   const selectedLinkId = linkId ?? pending?.suggestedMatchId ?? candidates[0]?.id;
+
+  if (awaitingRecurring) {
+    return (
+      <BottomSheet open title="Recurring payment due" onClose={() => {}} maxWidthClassName="max-w-md">
+        <div className="px-4 pb-6 text-center text-muted text-[14px]">Loading payment details…</div>
+      </BottomSheet>
+    );
+  }
 
   if (!pending || !rule || !dueAtIso) return null;
 

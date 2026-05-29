@@ -8,6 +8,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(UpiSmsPlugin.class);
+        registerPlugin(SpendtBackgroundPlugin.class);
         super.onCreate(savedInstanceState);
+        RecurringAlarmScheduler.rescheduleAll(getApplicationContext());
     }
 }

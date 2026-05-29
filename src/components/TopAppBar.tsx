@@ -6,6 +6,7 @@ import { resolveTheme } from '../lib/theme';
 
 function getPageTitle(pathname: string): string {
   if (pathname === '/') return 'Overview';
+  if (pathname.startsWith('/transactions/')) return 'Transaction';
   if (pathname.startsWith('/transactions')) return 'Transactions';
   if (pathname.startsWith('/stats')) return 'Insights';
   if (pathname.startsWith('/settings')) return 'Settings';

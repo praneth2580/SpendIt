@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import ThemeSync from './components/ThemeSync';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
+import TransactionDetail from './pages/TransactionDetail';
 import StatsInsights from './pages/StatsInsights';
 import AddTransactionSheetRoute from './pages/AddTransactionSheetRoute';
 import Settings from './pages/Settings';
@@ -18,6 +19,7 @@ function AppRoutes() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="transactions" element={<Transactions />} />
+        <Route path="transactions/:id" element={<TransactionDetail />} />
         <Route path="stats" element={<StatsInsights />} />
         <Route path="add" element={<AddTransactionSheetRoute />} />
         <Route path="add-expense" element={<AddTransactionSheetRoute />} />

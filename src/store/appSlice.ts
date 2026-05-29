@@ -179,6 +179,49 @@ export const addTransaction = createAsyncThunk(
   },
 );
 
+export type TransactionUpdate = Omit<Transaction, 'createdAt'> & {
+  createdAt?: string;
+};
+
+export const updateTransaction = createAsyncThunk(
+  'app/updateTransaction',
+  async (payload: TransactionUpdate, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const existing = state.app.transactions.find(
+      (transaction) => transaction.id === payload.id,
+    );
+    if (!existing) {
+      throw new Error('Transaction not found');
+    }
+
+    const updated: Transaction = {
+      ...existing,
+      ...payload,
+      createdAt: payload.createdAt ?? existing.createdAt,
+    };
+
+    const nextTransactions = state.app.transactions.map((transaction) =>
+      transaction.id === updated.id ? updated : transaction,
+    );
+    nextTransactions.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    const nextState = withDerivedState(
+      nextTransactions,
+      state.app.categories,
+      state.app.accounts,
+      state.app.settings,
+    );
+
+    await saveTransaction(updated);
+    await saveAllCategories(nextState.categories);
+
+    return nextState;
+  },
+);
+
 export const deleteTransaction = createAsyncThunk(
   'app/deleteTransaction',
   async (id: string, { getState }) => {
@@ -394,6 +437,10 @@ const appSlice = createSlice({
         state.processedSmsKeys = action.payload;
       })
       .addCase(addTransaction.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
+      }))
+      .addCase(updateTransaction.fulfilled, (state, action) => ({
         ...state,
         ...action.payload,
       }))

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import clsx from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import BottomSheet from './BottomSheet';
+import PickerTile, { PickerRail } from './PickerTile';
 import Button from './ui/Button';
 import { formatCurrency } from '../lib/format';
 import {
@@ -41,14 +41,6 @@ export default function UpiImportSheet() {
 
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const displayNote = (showNote ? note : action.merchant).trim() || action.merchant;
-
-  const pickerTile = (active: boolean) =>
-    clsx(
-      'shrink-0 rounded-2xl border p-3 flex flex-col items-center gap-2 transition-all min-w-[76px]',
-      active
-        ? 'border-brand/50 bg-brand-muted ring-2 ring-brand/20'
-        : 'border-border bg-surface-2 hover:bg-elevated',
-    );
 
   const dismiss = () => {
     void dispatch(markSmsProcessed(pending.dedupeKey));
@@ -149,21 +141,17 @@ export default function UpiImportSheet() {
             {accounts.length === 0 ? (
               <p className="text-muted text-[13px]">Add an account in Settings first.</p>
             ) : (
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+              <PickerRail>
                 {accounts.map((account) => (
-                  <button
+                  <PickerTile
                     key={account.id}
-                    type="button"
+                    active={account.id === accountId}
                     onClick={() => setAccountId(account.id)}
-                    className={pickerTile(account.id === accountId)}
-                  >
-                    <span className="material-symbols-outlined text-muted">{account.icon}</span>
-                    <span className="text-[11px] text-fg font-medium truncate w-full text-center">
-                      {account.name}
-                    </span>
-                  </button>
+                    icon={account.icon}
+                    label={account.name}
+                  />
                 ))}
-              </div>
+              </PickerRail>
             )}
           </div>
         ) : null}
@@ -179,19 +167,17 @@ export default function UpiImportSheet() {
             {categories.length === 0 ? (
               <p className="text-muted text-[13px]">Add a category in Settings first.</p>
             ) : (
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+              <PickerRail>
                 {categories.map((category) => (
-                  <button
+                  <PickerTile
                     key={category.id}
-                    type="button"
+                    active={category.id === categoryId}
                     onClick={() => setCategoryId(category.id)}
-                    className={pickerTile(category.id === categoryId)}
-                  >
-                    <span className="material-symbols-outlined text-muted">{category.icon}</span>
-                    <span className="text-[11px] text-fg font-medium">{category.name}</span>
-                  </button>
+                    icon={category.icon}
+                    label={category.name}
+                  />
                 ))}
-              </div>
+              </PickerRail>
             )}
           </div>
         ) : null}

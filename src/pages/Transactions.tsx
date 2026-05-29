@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { deleteTransaction } from '../store/appSlice';
+import { useAppSelector } from '../store/hooks';
 import {
   computeMonthlyIncome,
   getAccountMap,
@@ -12,7 +11,6 @@ import TransactionRow, { StatCard } from '../components/FinanceCards';
 import Card from '../components/ui/Card';
 
 export default function Transactions() {
-  const dispatch = useAppDispatch();
   const { transactions, settings, categories, accounts, user } = useAppSelector(
     (state) => state.app,
   );
@@ -85,11 +83,7 @@ export default function Transactions() {
                         : undefined
                     }
                     showChevron
-                    onClick={() => {
-                      if (window.confirm(`Delete "${transaction.merchant}"?`)) {
-                        void dispatch(deleteTransaction(transaction.id));
-                      }
-                    }}
+                    to={`/transactions/${transaction.id}`}
                   />
                 ))}
               </div>

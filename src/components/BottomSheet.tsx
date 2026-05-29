@@ -77,7 +77,9 @@ export default function BottomSheet({
             ) : null}
           </div>
 
-          <div className="max-h-[85dvh] overflow-y-auto">{children}</div>
+          <div className="max-h-[85dvh] overflow-y-auto overflow-x-hidden px-0.5">
+            {children}
+          </div>
         </div>
       </div>
     </div>,

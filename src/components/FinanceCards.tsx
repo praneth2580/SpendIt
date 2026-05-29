@@ -10,33 +10,28 @@ type TransactionRowProps = {
   currency: string;
   category?: Category;
   account?: Account;
+  to?: string;
   onClick?: () => void;
   showChevron?: boolean;
 };
+
+const rowInteractiveClass =
+  'w-full text-left px-1 py-3 hover:bg-surface-2 rounded-2xl transition-colors block';
 
 export default function TransactionRow({
   transaction,
   currency,
   category,
   account,
+  to,
   onClick,
   showChevron = false,
 }: TransactionRowProps) {
   const iconStyle = iconColorStyles[transaction.iconColor];
-  const Wrapper = onClick ? 'button' : 'div';
   const isIncome = transaction.amount > 0;
+  const showNavAffordance = showChevron || Boolean(to);
 
-  return (
-    <Wrapper
-      {...(onClick
-        ? {
-            type: 'button' as const,
-            onClick,
-            className:
-              'w-full text-left px-1 py-3 hover:bg-surface-2 rounded-2xl transition-colors',
-          }
-        : { className: 'flex items-center justify-between group w-full py-1' })}
-    >
+  const inner = (
       <div className="flex items-center justify-between gap-4 w-full">
         <div className="flex items-center gap-3 min-w-0">
           <div
@@ -68,15 +63,32 @@ export default function TransactionRow({
           >
             {formatCurrency(transaction.amount, currency, { showSign: true })}
           </span>
-          {showChevron ? (
+          {showNavAffordance ? (
             <span className="material-symbols-outlined text-muted text-[18px]">
               chevron_right
             </span>
           ) : null}
         </div>
       </div>
-    </Wrapper>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className={rowInteractiveClass}>
+        {inner}
+      </Link>
+    );
+  }
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={rowInteractiveClass}>
+        {inner}
+      </button>
+    );
+  }
+
+  return <div className="flex items-center justify-between group w-full py-1">{inner}</div>;
 }
 
 type StatCardProps = {

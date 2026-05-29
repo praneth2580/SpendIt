@@ -233,6 +233,8 @@ export default function Dashboard() {
                         ? accounts.find((a) => a.id === transaction.accountId)
                         : undefined
                     }
+                    showChevron
+                    to={`/transactions/${transaction.id}`}
                   />
                 ))}
               </div>

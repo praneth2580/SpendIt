@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getCurrencySymbol } from '../lib/format';
 import BottomSheet from '../components/BottomSheet';
 import CategoryForm from '../components/CategoryForm';
+import PickerTile, { PickerRail, pickerTileClass } from '../components/PickerTile';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
@@ -88,14 +89,6 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     else navigate('/');
   };
 
-  const pickerTile = (active: boolean) =>
-    clsx(
-      'shrink-0 rounded-2xl border p-3 flex flex-col items-center gap-2 transition-all min-w-[76px]',
-      active
-        ? 'border-brand/50 bg-brand-muted ring-2 ring-brand/20'
-        : 'border-border bg-surface-2 hover:bg-elevated',
-    );
-
   return (
     <div className={embedded ? 'w-full' : 'max-w-md mx-auto w-full'}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -169,21 +162,17 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
               {accounts.length === 0 ? (
                 <p className="text-muted text-[13px]">Add an account in Settings first.</p>
               ) : (
-                <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                <PickerRail>
                   {accounts.map((account) => (
-                    <button
+                    <PickerTile
                       key={account.id}
-                      type="button"
+                      active={account.id === activeAccountId}
                       onClick={() => setSelectedAccountId(account.id)}
-                      className={pickerTile(account.id === activeAccountId)}
-                    >
-                      <span className="material-symbols-outlined text-muted">{account.icon}</span>
-                      <span className="text-[11px] text-fg font-medium truncate w-full text-center">
-                        {account.name}
-                      </span>
-                    </button>
+                      icon={account.icon}
+                      label={account.name}
+                    />
                   ))}
-                </div>
+                </PickerRail>
               )}
             </div>
 
@@ -208,27 +197,28 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
                     Create your first category
                   </button>
                 ) : (
-                  <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                  <PickerRail>
                     {categories.map((c) => (
-                      <button
+                      <PickerTile
                         key={c.id}
-                        type="button"
+                        active={c.id === activeCategoryId}
                         onClick={() => setSelectedCategoryId(c.id)}
-                        className={pickerTile(c.id === activeCategoryId)}
-                      >
-                        <span className="material-symbols-outlined text-muted">{c.icon}</span>
-                        <span className="text-[11px] text-fg font-medium">{c.name}</span>
-                      </button>
+                        icon={c.icon}
+                        label={c.name}
+                      />
                     ))}
                     <button
                       type="button"
                       onClick={() => setShowCategorySheet(true)}
-                      className="shrink-0 min-w-[76px] rounded-2xl border border-dashed border-border flex flex-col items-center justify-center gap-1 py-3 text-brand"
+                      className={pickerTileClass(
+                        false,
+                        'border-dashed !border-border bg-transparent text-brand hover:bg-brand-muted/50',
+                      )}
                     >
-                      <span className="material-symbols-outlined">add</span>
-                      <span className="text-[11px]">New</span>
+                      <span className="material-symbols-outlined text-[22px]">add</span>
+                      <span className="text-[11px] font-medium">New</span>
                     </button>
-                  </div>
+                  </PickerRail>
                 )}
               </div>
             ) : (

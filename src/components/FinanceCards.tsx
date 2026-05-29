@@ -10,6 +10,8 @@ type TransactionRowProps = {
   currency: string;
   category?: Category;
   account?: Account;
+  fromAccount?: Account;
+  toAccount?: Account;
   to?: string;
   onClick?: () => void;
   showChevron?: boolean;
@@ -23,13 +25,19 @@ export default function TransactionRow({
   currency,
   category,
   account,
+  fromAccount,
+  toAccount,
   to,
   onClick,
   showChevron = false,
 }: TransactionRowProps) {
   const iconStyle = iconColorStyles[transaction.iconColor];
-  const isIncome = transaction.amount > 0;
+  const isTransfer = transaction.type === 'transfer';
+  const isIncome = transaction.type === 'income' || (!isTransfer && transaction.amount > 0);
   const showNavAffordance = showChevron || Boolean(to);
+  const showAccountLine = isTransfer
+    ? Boolean(fromAccount || toAccount)
+    : Boolean(account);
 
   const inner = (
       <div className="flex items-center justify-between gap-4 w-full">
@@ -50,7 +58,13 @@ export default function TransactionRow({
             <span className="text-muted text-[12px] truncate">
               {formatTransactionDate(transaction.createdAt)}
               {category ? ` · ${category.name}` : ''}
-              {account ? ` · ${account.name}` : ''}
+              {showAccountLine
+                ? isTransfer
+                  ? ` · ${fromAccount?.name ?? 'From'} → ${toAccount?.name ?? 'To'}`
+                  : account
+                    ? ` · ${account.name}`
+                    : ''
+                : ''}
             </span>
           </div>
         </div>
@@ -58,10 +72,14 @@ export default function TransactionRow({
           <span
             className={clsx(
               'font-semibold tabular-nums text-[15px]',
-              isIncome ? 'text-success' : 'text-fg',
+              isTransfer ? 'text-muted' : isIncome ? 'text-success' : 'text-fg',
             )}
           >
-            {formatCurrency(transaction.amount, currency, { showSign: true })}
+            {isTransfer
+              ? formatCurrency(Math.abs(transaction.amount), currency, {
+                  showSign: false,
+                })
+              : formatCurrency(transaction.amount, currency, { showSign: true })}
           </span>
           {showNavAffordance ? (
             <span className="material-symbols-outlined text-muted text-[18px]">

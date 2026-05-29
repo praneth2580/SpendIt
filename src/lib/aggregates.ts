@@ -28,7 +28,7 @@ export function computeMonthlySpent(
   return transactions
     .filter(
       (transaction) =>
-        transaction.amount < 0 &&
+        transaction.type === 'expense' &&
         isCurrentMonth(transaction.createdAt, referenceDate),
     )
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
@@ -41,7 +41,7 @@ export function computeMonthlyIncome(
   return transactions
     .filter(
       (transaction) =>
-        transaction.amount > 0 &&
+        transaction.type === 'income' &&
         isCurrentMonth(transaction.createdAt, referenceDate),
     )
     .reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -53,7 +53,11 @@ export function computeTotalNetWorth(
 ): number {
   return (
     startingNetWorth +
-    transactions.reduce((sum, transaction) => sum + transaction.amount, 0)
+    transactions.reduce(
+      (sum, transaction) =>
+        transaction.type === 'transfer' ? sum : sum + transaction.amount,
+      0,
+    )
   );
 }
 
@@ -72,7 +76,11 @@ export function computeNetWorthChangePercent(
     startingNetWorth +
     transactions
       .filter((transaction) => new Date(transaction.createdAt) < startOfMonth)
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
+      .reduce(
+        (sum, transaction) =>
+          transaction.type === 'transfer' ? sum : sum + transaction.amount,
+        0,
+      );
 
   const currentNetWorth = computeTotalNetWorth(transactions, startingNetWorth);
 
@@ -93,7 +101,7 @@ export function computePreviousMonthSpent(
   return transactions
     .filter(
       (transaction) =>
-        transaction.amount < 0 &&
+        transaction.type === 'expense' &&
         isPreviousMonth(transaction.createdAt, referenceDate),
     )
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
@@ -107,6 +115,7 @@ export function syncCategorySpent(
   const spentByCategory = new Map<string, number>();
 
   for (const transaction of transactions) {
+    if (transaction.type !== 'expense') continue;
     if (!transaction.categoryId || transaction.amount >= 0) continue;
     if (!isCurrentMonth(transaction.createdAt, referenceDate)) continue;
 
@@ -142,6 +151,19 @@ export function syncAccountBalances(
   }
 
   for (const transaction of transactions) {
+    if (transaction.type === 'transfer') {
+      const fromId = transaction.fromAccountId;
+      const toId = transaction.toAccountId;
+      const amt = Math.abs(transaction.amount);
+      if (fromId) {
+        balanceByAccount.set(fromId, (balanceByAccount.get(fromId) ?? 0) - amt);
+      }
+      if (toId) {
+        balanceByAccount.set(toId, (balanceByAccount.get(toId) ?? 0) + amt);
+      }
+      continue;
+    }
+
     if (!transaction.accountId) continue;
     balanceByAccount.set(
       transaction.accountId,

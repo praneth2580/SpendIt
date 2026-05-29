@@ -16,6 +16,8 @@ export default function CategoryForm({ onCreated, onCancel }: CategoryFormProps)
   const dispatch = useAppDispatch();
   const [name, setName] = useState('');
   const [budget, setBudget] = useState('500');
+  const [budgetEnabled, setBudgetEnabled] = useState(true);
+  const [rolloverEnabled, setRolloverEnabled] = useState(false);
   const [icon, setIcon] = useState<string>(CATEGORY_ICON_OPTIONS[0]);
   const [color, setColor] = useState<Category['color']>('primary');
   const [saving, setSaving] = useState(false);
@@ -24,11 +26,19 @@ export default function CategoryForm({ onCreated, onCancel }: CategoryFormProps)
     event.preventDefault();
     const trimmedName = name.trim();
     const parsedBudget = Number.parseFloat(budget);
-    if (!trimmedName || !Number.isFinite(parsedBudget) || parsedBudget <= 0) return;
+    if (!trimmedName) return;
+    if (budgetEnabled && (!Number.isFinite(parsedBudget) || parsedBudget <= 0)) return;
 
     setSaving(true);
     const result = await dispatch(
-      addCategory({ name: trimmedName, budget: parsedBudget, icon, color }),
+      addCategory({
+        name: trimmedName,
+        budget: budgetEnabled ? parsedBudget : 0,
+        budgetEnabled,
+        rolloverEnabled: budgetEnabled ? rolloverEnabled : false,
+        icon,
+        color,
+      }),
     );
     setSaving(false);
 
@@ -36,6 +46,8 @@ export default function CategoryForm({ onCreated, onCancel }: CategoryFormProps)
       onCreated?.(result.payload.categoryId);
       setName('');
       setBudget('500');
+      setBudgetEnabled(true);
+      setRolloverEnabled(false);
     }
   };
 
@@ -54,20 +66,43 @@ export default function CategoryForm({ onCreated, onCancel }: CategoryFormProps)
         />
       </div>
 
-      <div className="flex flex-col gap-2">
-        <label htmlFor="category-budget" className="text-fg text-[13px] font-medium">
-          Monthly budget
-        </label>
+      <label className="flex items-center justify-between gap-3 cursor-pointer">
+        <span className="text-fg text-[13px] font-medium">Enable budget</span>
         <input
-          id="category-budget"
-          type="number"
-          min="1"
-          step="1"
-          value={budget}
-          onChange={(event) => setBudget(event.target.value)}
-          className="input-field"
+          type="checkbox"
+          className="h-5 w-5 accent-brand"
+          checked={budgetEnabled}
+          onChange={(e) => setBudgetEnabled(e.target.checked)}
         />
-      </div>
+      </label>
+
+      {budgetEnabled ? (
+        <>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="category-budget" className="text-fg text-[13px] font-medium">
+              Monthly budget
+            </label>
+            <input
+              id="category-budget"
+              type="number"
+              min="1"
+              step="1"
+              value={budget}
+              onChange={(event) => setBudget(event.target.value)}
+              className="input-field"
+            />
+          </div>
+          <label className="flex items-center justify-between gap-3 cursor-pointer">
+            <span className="text-fg text-[13px] font-medium">Rollover unused budget</span>
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-brand"
+              checked={rolloverEnabled}
+              onChange={(e) => setRolloverEnabled(e.target.checked)}
+            />
+          </label>
+        </>
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <span className="text-fg text-[13px] font-medium">Icon</span>

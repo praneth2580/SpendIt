@@ -9,13 +9,21 @@ import {
   syncCategorySpent,
 } from '../lib/aggregates';
 import {
+  buildTransactionFromRule,
+  computeNextRunAt,
+  findMatchingTransaction,
+  processRecurringRules,
+} from '../lib/recurring';
+import {
   clearDatabase,
   deleteStoredTransaction,
+  deleteRecurringRule,
   loadPersistedData,
   saveAccount,
   saveAllCategories,
   saveCategory,
   saveExtractionRules,
+  saveRecurringRule,
   saveSettings,
   saveSmsDedupeKeys,
   saveTransaction,
@@ -28,7 +36,9 @@ import type {
   NewAccount,
   NewCategory,
   NewExtractionRule,
+  PendingRecurringInstance,
   PendingUpiImport,
+  RecurringRule,
   Transaction,
   UserSummary,
 } from './types';
@@ -125,8 +135,10 @@ const initialState: AppDataState = {
   categories: [],
   accounts: [],
   pendingUpiImport: null,
+  pendingRecurringQueue: [],
   processedSmsKeys: [],
   extractionRules: [],
+  recurringRules: [],
 };
 
 async function loadAppState() {
@@ -140,11 +152,81 @@ async function loadAppState() {
     ),
     processedSmsKeys: data.processedSmsKeys,
     extractionRules: data.extractionRules,
+    recurringRules: data.recurringRules ?? [],
     pendingUpiImport: null as PendingUpiImport | null,
+    pendingRecurringQueue: data.pendingRecurring ?? [],
+  };
+}
+
+function syncRecurringAfterChanges(
+  transactions: Transaction[],
+  recurringRules: RecurringRule[],
+  settings: AppSettings,
+  queueAfterResolve: PendingRecurringInstance[],
+) {
+  const queuedRuleIds = new Set(queueAfterResolve.map((p) => p.ruleId));
+  const result = processRecurringRules(
+    recurringRules,
+    transactions,
+    settings,
+    new Date(),
+    queuedRuleIds,
+  );
+  const mergedPending = [
+    ...queueAfterResolve,
+    ...result.pending.filter((p) => !queuedRuleIds.has(p.ruleId)),
+  ];
+  return {
+    transactions: result.transactions,
+    recurringRules: result.recurringRules,
+    pendingRecurringQueue: mergedPending,
+    newTransactions: result.newTransactions,
+    updatedTransactionIds: result.updatedTransactionIds,
+  };
+}
+
+function applyRecurringSyncToState(
+  base: ReturnType<typeof withDerivedState>,
+  sync: ReturnType<typeof syncRecurringAfterChanges>,
+) {
+  return {
+    ...base,
+    recurringRules: sync.recurringRules,
+    pendingRecurringQueue: sync.pendingRecurringQueue,
   };
 }
 
 export const hydrateApp = createAsyncThunk('app/hydrate', loadAppState);
+
+/** Re-check due recurring rules (e.g. after resume from background or notification tap). */
+export const refreshRecurring = createAsyncThunk(
+  'app/refreshRecurring',
+  async (_, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const sync = syncRecurringAfterChanges(
+      state.app.transactions,
+      state.app.recurringRules,
+      state.app.settings,
+      state.app.pendingRecurringQueue,
+    );
+
+    for (const t of sync.newTransactions) await saveTransaction(t);
+    for (const id of sync.updatedTransactionIds) {
+      const row = sync.transactions.find((tx) => tx.id === id);
+      if (row) await saveTransaction(row);
+    }
+    for (const r of sync.recurringRules) await saveRecurringRule(r);
+
+    const nextState = withDerivedState(
+      sync.transactions,
+      state.app.categories,
+      state.app.accounts,
+      state.app.settings,
+    );
+    await saveAllCategories(nextState.categories);
+    return applyRecurringSyncToState(nextState, sync);
+  },
+);
 
 export const clearAppData = createAsyncThunk('app/clearAppData', async () => {
   await clearDatabase();
@@ -164,7 +246,168 @@ export const addTransaction = createAsyncThunk(
       createdAt: new Date().toISOString(),
     };
 
-    const nextTransactions = [nextTransaction, ...state.app.transactions];
+    await saveTransaction(nextTransaction);
+
+    let txs = [nextTransaction, ...state.app.transactions];
+    let rules = state.app.recurringRules;
+    let queue = state.app.pendingRecurringQueue;
+
+    if (!nextTransaction.recurringRuleId) {
+      for (const rule of state.app.recurringRules) {
+        if (!rule.active) continue;
+        const dueAt = new Date(rule.nextRunAt);
+        if (dueAt.getTime() > Date.now()) continue;
+        const match = findMatchingTransaction(rule, [nextTransaction], dueAt, state.app.settings);
+        if (match) {
+          const updated = { ...nextTransaction, recurringRuleId: rule.id };
+          await saveTransaction(updated);
+          txs = [updated, ...state.app.transactions];
+          const advanced = {
+            ...rule,
+            nextRunAt: computeNextRunAt(rule, dueAt).toISOString(),
+          };
+          await saveRecurringRule(advanced);
+          rules = rules.map((r) => (r.id === rule.id ? advanced : r));
+          queue = queue.filter((p) => p.ruleId !== rule.id);
+          break;
+        }
+      }
+    }
+
+    const sync = syncRecurringAfterChanges(txs, rules, state.app.settings, queue);
+    for (const t of sync.newTransactions) await saveTransaction(t);
+    for (const id of sync.updatedTransactionIds) {
+      const row = sync.transactions.find((t) => t.id === id);
+      if (row) await saveTransaction(row);
+    }
+    for (const r of sync.recurringRules) await saveRecurringRule(r);
+
+    const nextState = withDerivedState(
+      sync.transactions,
+      state.app.categories,
+      state.app.accounts,
+      state.app.settings,
+    );
+
+    await saveAllCategories(nextState.categories);
+
+    return applyRecurringSyncToState(nextState, sync);
+  },
+);
+
+export const confirmRecurringPending = createAsyncThunk(
+  'app/confirmRecurringPending',
+  async (
+    payload: { pendingId: string; linkTransactionId?: string },
+    { getState },
+  ) => {
+    const state = getState() as { app: AppDataState };
+    const pending = state.app.pendingRecurringQueue.find((p) => p.id === payload.pendingId);
+    if (!pending) return state.app;
+
+    const rule = state.app.recurringRules.find((r) => r.id === pending.ruleId);
+    if (!rule) return state.app;
+
+    const dueAt = new Date(pending.dueAt);
+    let txs = [...state.app.transactions];
+    let rules = state.app.recurringRules.map((r) => ({ ...r }));
+
+    if (payload.linkTransactionId) {
+      const target = txs.find((t) => t.id === payload.linkTransactionId);
+      if (target) {
+        const updated = { ...target, recurringRuleId: rule.id };
+        await saveTransaction(updated);
+        txs = txs.map((t) => (t.id === updated.id ? updated : t));
+      }
+    } else {
+      const created = buildTransactionFromRule(rule, dueAt);
+      await saveTransaction(created);
+      txs = [created, ...txs];
+    }
+
+    const advanced = {
+      ...rule,
+      nextRunAt: computeNextRunAt(rule, dueAt).toISOString(),
+    };
+    await saveRecurringRule(advanced);
+    rules = rules.map((r) => (r.id === rule.id ? advanced : r));
+
+    const queue = state.app.pendingRecurringQueue.filter((p) => p.id !== pending.id);
+    const sync = syncRecurringAfterChanges(txs, rules, state.app.settings, queue);
+    for (const t of sync.newTransactions) await saveTransaction(t);
+    for (const id of sync.updatedTransactionIds) {
+      const row = sync.transactions.find((t) => t.id === id);
+      if (row) await saveTransaction(row);
+    }
+    for (const r of sync.recurringRules) await saveRecurringRule(r);
+
+    const nextState = withDerivedState(
+      sync.transactions,
+      state.app.categories,
+      state.app.accounts,
+      state.app.settings,
+    );
+    await saveAllCategories(nextState.categories);
+    return applyRecurringSyncToState(nextState, sync);
+  },
+);
+
+export const skipRecurringPending = createAsyncThunk(
+  'app/skipRecurringPending',
+  async (pendingId: string, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const pending = state.app.pendingRecurringQueue.find((p) => p.id === pendingId);
+    if (!pending) return state.app;
+
+    const rule = state.app.recurringRules.find((r) => r.id === pending.ruleId);
+    if (!rule) return state.app;
+
+    const dueAt = new Date(pending.dueAt);
+    const advanced = {
+      ...rule,
+      nextRunAt: computeNextRunAt(rule, dueAt).toISOString(),
+    };
+    await saveRecurringRule(advanced);
+    const rules = state.app.recurringRules.map((r) =>
+      r.id === rule.id ? advanced : r,
+    );
+
+    const queue = state.app.pendingRecurringQueue.filter((p) => p.id !== pendingId);
+    const sync = syncRecurringAfterChanges(
+      state.app.transactions,
+      rules,
+      state.app.settings,
+      queue,
+    );
+    for (const t of sync.newTransactions) await saveTransaction(t);
+    for (const id of sync.updatedTransactionIds) {
+      const row = sync.transactions.find((t) => t.id === id);
+      if (row) await saveTransaction(row);
+    }
+    for (const r of sync.recurringRules) await saveRecurringRule(r);
+
+    const nextState = withDerivedState(
+      sync.transactions,
+      state.app.categories,
+      state.app.accounts,
+      state.app.settings,
+    );
+    await saveAllCategories(nextState.categories);
+    return applyRecurringSyncToState(nextState, sync);
+  },
+);
+
+export const importTransactionsBulk = createAsyncThunk(
+  'app/importTransactionsBulk',
+  async (transactions: Transaction[], { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const existingIds = new Set(state.app.transactions.map((t) => t.id));
+    const filtered = transactions.filter((t) => !existingIds.has(t.id));
+    if (filtered.length === 0) return state.app;
+
+    const nextTransactions = [...filtered, ...state.app.transactions];
+    nextTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     const nextState = withDerivedState(
       nextTransactions,
       state.app.categories,
@@ -172,7 +415,8 @@ export const addTransaction = createAsyncThunk(
       state.app.settings,
     );
 
-    await saveTransaction(nextTransaction);
+    // Persist each record (fast enough for typical CSV imports).
+    await Promise.all(filtered.map((t) => saveTransaction(t)));
     await saveAllCategories(nextState.categories);
 
     return nextState;
@@ -265,6 +509,36 @@ export const addCategory = createAsyncThunk(
     await saveAllCategories(nextState.categories);
 
     return { nextState, categoryId: nextCategory.id };
+  },
+);
+
+export const updateCategory = createAsyncThunk(
+  'app/updateCategory',
+  async (category: Category, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const existing = state.app.categories.find((c) => c.id === category.id);
+    if (!existing) throw new Error('Category not found');
+
+    const updated: Category = {
+      ...existing,
+      ...category,
+      spent: existing.spent,
+      budgetEnabled: category.budgetEnabled ?? existing.budgetEnabled,
+      rolloverEnabled: category.rolloverEnabled ?? existing.rolloverEnabled,
+      budget: category.budgetEnabled ? category.budget : 0,
+    };
+
+    const nextCategories = state.app.categories.map((c) => (c.id === updated.id ? updated : c));
+    const nextState = withDerivedState(
+      state.app.transactions,
+      nextCategories,
+      state.app.accounts,
+      state.app.settings,
+    );
+
+    await saveCategory(updated);
+    await saveAllCategories(nextState.categories);
+    return nextState;
   },
 );
 
@@ -415,6 +689,57 @@ export const markSmsProcessed = createAsyncThunk(
   },
 );
 
+export type RecurringRuleUpsert = Omit<RecurringRule, 'id' | 'nextRunAt'> & {
+  id?: string;
+  nextRunAt?: string;
+};
+
+export const upsertRecurringRule = createAsyncThunk(
+  'app/upsertRecurringRule',
+  async (payload: RecurringRuleUpsert, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    const existing = payload.id
+      ? state.app.recurringRules.find((r) => r.id === payload.id)
+      : undefined;
+
+    const interval = Math.max(1, Math.floor(payload.interval));
+    const now = new Date();
+    const nextRule: RecurringRule = {
+      id: existing?.id ?? uuidv4(),
+      name: payload.name.trim(),
+      amount: Math.abs(payload.amount),
+      type: payload.type,
+      categoryId: payload.type === 'expense' ? payload.categoryId : undefined,
+      accountId: payload.type === 'transfer' ? undefined : payload.accountId,
+      fromAccountId: payload.type === 'transfer' ? payload.fromAccountId : undefined,
+      toAccountId: payload.type === 'transfer' ? payload.toAccountId : undefined,
+      cadence: payload.cadence,
+      interval,
+      startDate: payload.startDate,
+      nextRunAt: payload.nextRunAt ?? existing?.nextRunAt ?? now.toISOString(),
+      endDate: payload.endDate || undefined,
+      active: payload.active,
+    };
+
+    await saveRecurringRule(nextRule);
+    const nextRules = existing
+      ? state.app.recurringRules.map((r) => (r.id === nextRule.id ? nextRule : r))
+      : [...state.app.recurringRules, nextRule];
+
+    nextRules.sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime());
+    return nextRules;
+  },
+);
+
+export const removeRecurringRule = createAsyncThunk(
+  'app/removeRecurringRule',
+  async (id: string, { getState }) => {
+    const state = getState() as { app: AppDataState };
+    await deleteRecurringRule(id);
+    return state.app.recurringRules.filter((r) => r.id !== id);
+  },
+);
+
 const appSlice = createSlice({
   name: 'app',
   initialState,
@@ -440,6 +765,10 @@ const appSlice = createSlice({
         ...state,
         ...action.payload,
       }))
+      .addCase(importTransactionsBulk.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
+      }))
       .addCase(updateTransaction.fulfilled, (state, action) => ({
         ...state,
         ...action.payload,
@@ -451,6 +780,10 @@ const appSlice = createSlice({
       .addCase(addCategory.fulfilled, (state, action) => ({
         ...state,
         ...action.payload.nextState,
+      }))
+      .addCase(updateCategory.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
       }))
       .addCase(addAccount.fulfilled, (state, action) => ({
         ...state,
@@ -477,7 +810,25 @@ const appSlice = createSlice({
       })
       .addCase(reorderExtractionRules.fulfilled, (state, action) => {
         state.extractionRules = action.payload;
-      });
+      })
+      .addCase(upsertRecurringRule.fulfilled, (state, action) => {
+        state.recurringRules = action.payload;
+      })
+      .addCase(removeRecurringRule.fulfilled, (state, action) => {
+        state.recurringRules = action.payload;
+      })
+      .addCase(confirmRecurringPending.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
+      }))
+      .addCase(skipRecurringPending.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
+      }))
+      .addCase(refreshRecurring.fulfilled, (state, action) => ({
+        ...state,
+        ...action.payload,
+      }));
   },
 });
 

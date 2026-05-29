@@ -4,9 +4,11 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { addTransaction } from '../store/appSlice';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getCurrencySymbol } from '../lib/format';
+import { evaluateExpression } from '../lib/calc';
 import BottomSheet from '../components/BottomSheet';
 import CategoryForm from '../components/CategoryForm';
-import PickerTile, { PickerRail, pickerTileClass } from '../components/PickerTile';
+import PickerTile, { PickerRail } from '../components/PickerTile';
+import { pickerTileClass } from '../components/pickerTileClass';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
@@ -23,19 +25,32 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     searchParams.get('note') ??
     searchParams.get('text') ??
     '';
-  const urlType = searchParams.get('type') === 'income' ? 'income' : 'expense';
+  const urlTypeParam = searchParams.get('type');
+  const urlType =
+    urlTypeParam === 'income' || urlTypeParam === 'transfer' ? urlTypeParam : 'expense';
   const urlCategoryId = searchParams.get('categoryId');
   const urlAccountId = searchParams.get('accountId');
+  const urlFromAccountId = searchParams.get('fromAccountId');
+  const urlToAccountId = searchParams.get('toAccountId');
   const hasPrefill = Boolean(initialAmount);
 
-  const [typeOverride, setTypeOverride] = useState<'expense' | 'income' | null>(null);
+  const [typeOverride, setTypeOverride] = useState<
+    'expense' | 'income' | 'transfer' | null
+  >(null);
   const [amount, setAmount] = useState(initialAmount);
   const [note, setNote] = useState(initialNote);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     urlCategoryId,
   );
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(urlAccountId);
+  const [selectedFromAccountId, setSelectedFromAccountId] = useState<string | null>(
+    urlFromAccountId,
+  );
+  const [selectedToAccountId, setSelectedToAccountId] = useState<string | null>(
+    urlToAccountId,
+  );
   const [showKeypad, setShowKeypad] = useState(!hasPrefill);
+  const [calculatorMode, setCalculatorMode] = useState(false);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
   const dispatch = useAppDispatch();
   const { categories, accounts, settings } = useAppSelector((state) => state.app);
@@ -46,11 +61,24 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
   const activeCategoryId =
     selectedCategoryId ?? urlCategoryId ?? categories[0]?.id ?? '';
   const activeAccountId = selectedAccountId ?? urlAccountId ?? accounts[0]?.id ?? '';
+  const activeFromAccountId =
+    selectedFromAccountId ?? urlFromAccountId ?? accounts[0]?.id ?? '';
+  const activeToAccountId =
+    selectedToAccountId ??
+    urlToAccountId ??
+    (accounts.length > 1 ? accounts[1]!.id : accounts[0]?.id ?? '');
   const selectedCategory = categories.find((c) => c.id === activeCategoryId);
   const selectedAccount = accounts.find((a) => a.id === activeAccountId);
+  const selectedFromAccount = accounts.find((a) => a.id === activeFromAccountId);
+  const selectedToAccount = accounts.find((a) => a.id === activeToAccountId);
 
-  const parsedAmount = Number.parseFloat(amount);
-  const amountIsValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const calc = calculatorMode ? evaluateExpression(amount) : null;
+  const resolvedNumericAmount = calculatorMode
+    ? calc && calc.ok
+      ? calc.value
+      : Number.NaN
+    : Number.parseFloat(amount);
+  const amountIsValid = Number.isFinite(resolvedNumericAmount) && resolvedNumericAmount > 0;
 
   const clampAmountString = (next: string) => {
     const cleaned = next.replace(/[^\d.]/g, '');
@@ -60,28 +88,59 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     return `${intPart}.${dec.slice(0, 2)}`;
   };
 
+  const clampExpressionString = (next: string) => {
+    // allow digits, decimal, operators and parentheses
+    return next.replace(/[^\d.+\-*/() ]/g, '').slice(0, 200);
+  };
+
   const formatDisplayAmount = (raw: string) => {
     if (!raw) return '0.00';
-    const n = Number.parseFloat(raw);
+    const n = calculatorMode
+      ? calc && calc.ok
+        ? calc.value
+        : Number.NaN
+      : Number.parseFloat(raw);
     if (!Number.isFinite(n)) return '0.00';
     return n.toFixed(2);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amountIsValid || (type === 'expense' && !selectedCategory) || !selectedAccount) return;
+    if (!amountIsValid) return;
+    if (type === 'transfer') {
+      if (!selectedFromAccount || !selectedToAccount) return;
+      if (selectedFromAccount.id === selectedToAccount.id) return;
+    } else {
+      if ((type === 'expense' && !selectedCategory) || !selectedAccount) return;
+    }
 
     await dispatch(
       addTransaction({
         merchant:
           note.trim() ||
-          (type === 'income' ? 'Income' : (selectedCategory?.name ?? 'Expense')),
-        amount: type === 'expense' ? -Math.abs(parsedAmount) : Math.abs(parsedAmount),
-        icon: type === 'income' ? 'arrow_downward' : (selectedCategory?.icon ?? 'payments'),
-        iconColor: type === 'income' ? 'secondary' : 'white',
+          (type === 'transfer'
+            ? 'Transfer'
+            : type === 'income'
+              ? 'Income'
+              : (selectedCategory?.name ?? 'Expense')),
+        amount:
+          type === 'expense'
+            ? -Math.abs(resolvedNumericAmount)
+            : type === 'income'
+              ? Math.abs(resolvedNumericAmount)
+              : Math.abs(resolvedNumericAmount),
+        icon:
+          type === 'transfer'
+            ? 'swap_horiz'
+            : type === 'income'
+              ? 'arrow_downward'
+              : (selectedCategory?.icon ?? 'payments'),
+        iconColor: type === 'transfer' ? 'primary' : type === 'income' ? 'secondary' : 'white',
         categoryId: type === 'expense' ? selectedCategory?.id : undefined,
-        accountId: selectedAccount.id,
-        type,
+        accountId: type === 'transfer' ? undefined : selectedAccount?.id,
+        fromAccountId: type === 'transfer' ? selectedFromAccount?.id : undefined,
+        toAccountId: type === 'transfer' ? selectedToAccount?.id : undefined,
+        type: type as 'expense' | 'income' | 'transfer',
       }),
     );
 
@@ -93,7 +152,7 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     <div className={embedded ? 'w-full' : 'max-w-md mx-auto w-full'}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div className="flex p-1 rounded-2xl bg-surface-2 border border-border">
-          {(['expense', 'income'] as const).map((t) => (
+          {(['expense', 'income', 'transfer'] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -122,14 +181,51 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
 
         {showKeypad ? (
           <Card padding="md">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="text-muted text-[12px]">
+                {calculatorMode ? (
+                  calc && calc.ok ? (
+                    <span className="text-success tabular-nums">= {calc.value.toFixed(2)}</span>
+                  ) : (
+                    <span className="text-amber-400">Enter a valid expression</span>
+                  )
+                ) : (
+                  <span>Keypad</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCalculatorMode((p) => !p);
+                  setAmount((p) => (p ? p : ''));
+                }}
+                className={clsx(
+                  'px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition-colors',
+                  calculatorMode
+                    ? 'bg-brand-muted border-brand/30 text-brand'
+                    : 'bg-surface-2 border-border text-muted hover:bg-elevated',
+                )}
+              >
+                Calculator
+              </button>
+            </div>
+
             <div className="grid grid-cols-3 gap-2">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((key) => (
+              {(calculatorMode
+                ? ['7', '8', '9', '/', '4', '5', '6', '*', '1', '2', '3', '-', '(', '0', '.', '+', ')', 'back']
+                : ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back']
+              ).map((key) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => {
                     if (key === 'back') setAmount((p) => p.slice(0, -1));
-                    else setAmount((p) => clampAmountString(p + (key === '.' ? '.' : key)));
+                    else
+                      setAmount((p) =>
+                        calculatorMode
+                          ? clampExpressionString(p + key)
+                          : clampAmountString(p + (key === '.' ? '.' : key)),
+                      );
                   }}
                   className="h-12 rounded-2xl bg-surface-2 border border-border text-fg font-medium hover:bg-elevated active:scale-95 transition-all flex items-center justify-center"
                 >
@@ -157,24 +253,75 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
           </Card>
         ) : (
           <>
-            <div>
-              <p className="section-label mb-2">Account</p>
-              {accounts.length === 0 ? (
-                <p className="text-muted text-[13px]">Add an account in Settings first.</p>
-              ) : (
-                <PickerRail>
-                  {accounts.map((account) => (
-                    <PickerTile
-                      key={account.id}
-                      active={account.id === activeAccountId}
-                      onClick={() => setSelectedAccountId(account.id)}
-                      icon={account.icon}
-                      label={account.name}
-                    />
-                  ))}
-                </PickerRail>
-              )}
-            </div>
+            {type === 'transfer' ? (
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="section-label mb-2">From account</p>
+                  {accounts.length === 0 ? (
+                    <p className="text-muted text-[13px]">
+                      Add an account in Settings first.
+                    </p>
+                  ) : (
+                    <PickerRail>
+                      {accounts.map((account) => (
+                        <PickerTile
+                          key={account.id}
+                          active={account.id === activeFromAccountId}
+                          onClick={() => setSelectedFromAccountId(account.id)}
+                          icon={account.icon}
+                          label={account.name}
+                        />
+                      ))}
+                    </PickerRail>
+                  )}
+                </div>
+
+                <div>
+                  <p className="section-label mb-2">To account</p>
+                  {accounts.length === 0 ? (
+                    <p className="text-muted text-[13px]">
+                      Add an account in Settings first.
+                    </p>
+                  ) : (
+                    <PickerRail>
+                      {accounts.map((account) => (
+                        <PickerTile
+                          key={account.id}
+                          active={account.id === activeToAccountId}
+                          onClick={() => setSelectedToAccountId(account.id)}
+                          icon={account.icon}
+                          label={account.name}
+                        />
+                      ))}
+                    </PickerRail>
+                  )}
+                  {selectedFromAccount && selectedToAccount && selectedFromAccount.id === selectedToAccount.id ? (
+                    <p className="text-danger text-[12px] mt-2">
+                      From and To accounts must be different.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="section-label mb-2">Account</p>
+                {accounts.length === 0 ? (
+                  <p className="text-muted text-[13px]">Add an account in Settings first.</p>
+                ) : (
+                  <PickerRail>
+                    {accounts.map((account) => (
+                      <PickerTile
+                        key={account.id}
+                        active={account.id === activeAccountId}
+                        onClick={() => setSelectedAccountId(account.id)}
+                        icon={account.icon}
+                        label={account.name}
+                      />
+                    ))}
+                  </PickerRail>
+                )}
+              </div>
+            )}
 
             {type === 'expense' ? (
               <div>
@@ -221,9 +368,13 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
                   </PickerRail>
                 )}
               </div>
-            ) : (
+            ) : type === 'income' ? (
               <div className="rounded-2xl bg-success-muted border border-success/20 px-4 py-3 text-success text-[13px]">
                 Income will increase your account balance and net worth.
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-brand-muted border border-brand/25 px-4 py-3 text-brand text-[13px]">
+                Transfers move money between accounts and don’t affect spending totals.
               </div>
             )}
 
@@ -246,10 +397,15 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
                 type="submit"
                 fullWidth
                 disabled={
-                  !amountIsValid || !selectedAccount || (type === 'expense' && !selectedCategory)
+                  !amountIsValid ||
+                  (type === 'transfer'
+                    ? !selectedFromAccount ||
+                      !selectedToAccount ||
+                      selectedFromAccount.id === selectedToAccount.id
+                    : !selectedAccount || (type === 'expense' && !selectedCategory))
                 }
               >
-                Save {type === 'expense' ? 'expense' : 'income'}
+                Save {type === 'transfer' ? 'transfer' : type === 'expense' ? 'expense' : 'income'}
               </Button>
             </div>
           </>

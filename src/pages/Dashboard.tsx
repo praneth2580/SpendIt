@@ -16,11 +16,12 @@ export default function Dashboard() {
   const monthLabel = getCurrentMonthLabel();
   const recentTransactions = transactions.slice(0, 5);
   const sortedCategories = [...categories].sort((a, b) => b.spent - a.spent);
+  const budgetCategories = sortedCategories.filter((c) => c.budgetEnabled);
   const budgetUsagePercent =
     user.monthlyBudget > 0
       ? Math.min(100, (user.monthlySpent / user.monthlyBudget) * 100)
       : 0;
-  const categorySegments = sortedCategories
+  const categorySegments = budgetCategories
     .filter((category) => category.spent > 0)
     .map((category) => ({
       id: category.id,
@@ -187,7 +188,7 @@ export default function Dashboard() {
               </Card>
             ) : (
               <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
-                {sortedCategories.map((category) => (
+                {budgetCategories.map((category) => (
                   <CategoryChip
                     key={category.id}
                     category={category}
@@ -231,6 +232,16 @@ export default function Dashboard() {
                     account={
                       transaction.accountId
                         ? accounts.find((a) => a.id === transaction.accountId)
+                        : undefined
+                    }
+                    fromAccount={
+                      transaction.fromAccountId
+                        ? accounts.find((a) => a.id === transaction.fromAccountId)
+                        : undefined
+                    }
+                    toAccount={
+                      transaction.toAccountId
+                        ? accounts.find((a) => a.id === transaction.toAccountId)
                         : undefined
                     }
                     showChevron

@@ -7,6 +7,7 @@ import Button from '../components/ui/Button';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { deleteTransaction, updateTransaction } from '../store/appSlice';
 import { formatCurrency, formatTransactionDate, getCurrencySymbol } from '../lib/format';
+import { evaluateExpression } from '../lib/calc';
 import PickerTile, { PickerRail } from '../components/PickerTile';
 import { categoryStyles, iconColorStyles } from '../lib/styles';
 
@@ -33,12 +34,15 @@ export default function TransactionDetail() {
     [id, transactions],
   );
 
-  const [type, setType] = useState<'expense' | 'income' | null>(null);
+  const [type, setType] = useState<'expense' | 'income' | 'transfer' | null>(null);
   const [amount, setAmount] = useState<string | null>(null);
   const [merchant, setMerchant] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [fromAccountId, setFromAccountId] = useState<string | null>(null);
+  const [toAccountId, setToAccountId] = useState<string | null>(null);
   const [createdAtLocal, setCreatedAtLocal] = useState<string | null>(null);
+  const [calculatorMode, setCalculatorMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -52,6 +56,12 @@ export default function TransactionDetail() {
     categoryId ?? transaction?.categoryId ?? categories[0]?.id ?? '';
   const resolvedAccountId =
     accountId ?? transaction?.accountId ?? accounts[0]?.id ?? '';
+  const resolvedFromAccountId =
+    fromAccountId ?? transaction?.fromAccountId ?? accounts[0]?.id ?? '';
+  const resolvedToAccountId =
+    toAccountId ??
+    transaction?.toAccountId ??
+    (accounts.length > 1 ? accounts[1]!.id : accounts[0]?.id ?? '');
   const resolvedCreatedAt =
     createdAtLocal ??
     (transaction ? toDatetimeLocalValue(transaction.createdAt) : '');
@@ -60,8 +70,15 @@ export default function TransactionDetail() {
   const currencySymbol = getCurrencySymbol(currency);
   const selectedCategory = categories.find((c) => c.id === resolvedCategoryId);
   const selectedAccount = accounts.find((a) => a.id === resolvedAccountId);
-  const parsedAmount = Number.parseFloat(resolvedAmount);
-  const amountIsValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const selectedFromAccount = accounts.find((a) => a.id === resolvedFromAccountId);
+  const selectedToAccount = accounts.find((a) => a.id === resolvedToAccountId);
+  const calc = calculatorMode ? evaluateExpression(resolvedAmount) : null;
+  const resolvedNumericAmount = calculatorMode
+    ? calc && calc.ok
+      ? calc.value
+      : Number.NaN
+    : Number.parseFloat(resolvedAmount);
+  const amountIsValid = Number.isFinite(resolvedNumericAmount) && resolvedNumericAmount > 0;
 
   if (!transaction) {
     return (
@@ -90,12 +107,12 @@ export default function TransactionDetail() {
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (
-      !amountIsValid ||
-      !selectedAccount ||
-      (resolvedType === 'expense' && !selectedCategory)
-    ) {
-      return;
+    if (!amountIsValid) return;
+    if (resolvedType === 'transfer') {
+      if (!selectedFromAccount || !selectedToAccount) return;
+      if (selectedFromAccount.id === selectedToAccount.id) return;
+    } else {
+      if (!selectedAccount || (resolvedType === 'expense' && !selectedCategory)) return;
     }
 
     setSaving(true);
@@ -105,20 +122,31 @@ export default function TransactionDetail() {
           id: transaction.id,
           merchant:
             resolvedMerchant.trim() ||
-            (resolvedType === 'income'
-              ? 'Income'
-              : (selectedCategory?.name ?? 'Expense')),
+            (resolvedType === 'transfer'
+              ? 'Transfer'
+              : resolvedType === 'income'
+                ? 'Income'
+                : (selectedCategory?.name ?? 'Expense')),
           amount:
             resolvedType === 'expense'
-              ? -Math.abs(parsedAmount)
-              : Math.abs(parsedAmount),
+              ? -Math.abs(resolvedNumericAmount)
+              : Math.abs(resolvedNumericAmount),
           icon:
-            resolvedType === 'income'
-              ? 'arrow_downward'
-              : (selectedCategory?.icon ?? transaction.icon),
-          iconColor: resolvedType === 'income' ? 'secondary' : 'white',
+            resolvedType === 'transfer'
+              ? 'swap_horiz'
+              : resolvedType === 'income'
+                ? 'arrow_downward'
+                : (selectedCategory?.icon ?? transaction.icon),
+          iconColor:
+            resolvedType === 'transfer'
+              ? 'primary'
+              : resolvedType === 'income'
+                ? 'secondary'
+                : 'white',
           categoryId: resolvedType === 'expense' ? selectedCategory?.id : undefined,
-          accountId: selectedAccount.id,
+          accountId: resolvedType === 'transfer' ? undefined : selectedAccount?.id,
+          fromAccountId: resolvedType === 'transfer' ? selectedFromAccount?.id : undefined,
+          toAccountId: resolvedType === 'transfer' ? selectedToAccount?.id : undefined,
           type: resolvedType,
           createdAt: fromDatetimeLocalValue(resolvedCreatedAt),
         }),
@@ -186,7 +214,7 @@ export default function TransactionDetail() {
 
         <form onSubmit={handleSave} className="flex flex-col gap-5">
           <div className="flex p-1 rounded-2xl bg-surface-2 border border-border">
-            {(['expense', 'income'] as const).map((value) => (
+            {(['expense', 'income', 'transfer'] as const).map((value) => (
               <button
                 key={value}
                 type="button"
@@ -215,16 +243,40 @@ export default function TransactionDetail() {
                 inputMode="decimal"
                 value={resolvedAmount}
                 onChange={(event) => {
+                  if (calculatorMode) {
+                    setAmount(event.target.value.replace(/[^\d.+\-*/() ]/g, '').slice(0, 200));
+                    return;
+                  }
+
                   const cleaned = event.target.value.replace(/[^\d.]/g, '');
                   const [intPart, ...rest] = cleaned.split('.');
                   const dec = rest.join('');
-                  setAmount(
-                    rest.length === 0 ? intPart : `${intPart}.${dec.slice(0, 2)}`,
-                  );
+                  setAmount(rest.length === 0 ? intPart : `${intPart}.${dec.slice(0, 2)}`);
                 }}
                 className="flex-1 bg-transparent text-fg text-h2 font-semibold tabular-nums outline-none"
               />
+              <button
+                type="button"
+                onClick={() => setCalculatorMode((p) => !p)}
+                className={clsx(
+                  'shrink-0 px-2.5 py-1.5 rounded-xl text-[12px] font-semibold border transition-colors',
+                  calculatorMode
+                    ? 'bg-brand-muted border-brand/30 text-brand'
+                    : 'bg-surface-2 border-border text-muted hover:bg-elevated',
+                )}
+              >
+                Calc
+              </button>
             </div>
+            {calculatorMode ? (
+              <p className="text-[12px] mt-2">
+                {calc && calc.ok ? (
+                  <span className="text-success tabular-nums">= {calc.value.toFixed(2)}</span>
+                ) : (
+                  <span className="text-amber-400">Enter a valid expression</span>
+                )}
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -259,7 +311,64 @@ export default function TransactionDetail() {
 
           <div>
             <p className="section-label mb-2">Account</p>
-            {accounts.length === 0 ? (
+            {resolvedType === 'transfer' ? (
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="section-label mb-2">From account</p>
+                  {accounts.length === 0 ? (
+                    <p className="text-muted text-[13px]">
+                      Add an account in{' '}
+                      <Link to="/settings" className="text-brand">
+                        Settings
+                      </Link>
+                      .
+                    </p>
+                  ) : (
+                    <PickerRail>
+                      {accounts.map((account) => (
+                        <PickerTile
+                          key={account.id}
+                          active={account.id === resolvedFromAccountId}
+                          onClick={() => setFromAccountId(account.id)}
+                          icon={account.icon}
+                          label={account.name}
+                        />
+                      ))}
+                    </PickerRail>
+                  )}
+                </div>
+
+                <div>
+                  <p className="section-label mb-2">To account</p>
+                  {accounts.length === 0 ? (
+                    <p className="text-muted text-[13px]">
+                      Add an account in{' '}
+                      <Link to="/settings" className="text-brand">
+                        Settings
+                      </Link>
+                      .
+                    </p>
+                  ) : (
+                    <PickerRail>
+                      {accounts.map((account) => (
+                        <PickerTile
+                          key={account.id}
+                          active={account.id === resolvedToAccountId}
+                          onClick={() => setToAccountId(account.id)}
+                          icon={account.icon}
+                          label={account.name}
+                        />
+                      ))}
+                    </PickerRail>
+                  )}
+                  {selectedFromAccount && selectedToAccount && selectedFromAccount.id === selectedToAccount.id ? (
+                    <p className="text-danger text-[12px] mt-2">
+                      From and To accounts must be different.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : accounts.length === 0 ? (
               <p className="text-muted text-[13px]">
                 Add an account in{' '}
                 <Link to="/settings" className="text-brand">
@@ -308,9 +417,13 @@ export default function TransactionDetail() {
                 </PickerRail>
               )}
             </div>
-          ) : (
+          ) : resolvedType === 'income' ? (
             <div className="rounded-2xl bg-success-muted border border-success/20 px-4 py-3 text-success text-[13px]">
               Income is not tied to a spending category.
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-brand-muted border border-brand/25 px-4 py-3 text-brand text-[13px]">
+              Transfers move money between accounts and don’t affect spending totals.
             </div>
           )}
 
@@ -322,8 +435,11 @@ export default function TransactionDetail() {
                 saving ||
                 deleting ||
                 !amountIsValid ||
-                !selectedAccount ||
-                (resolvedType === 'expense' && !selectedCategory)
+                (resolvedType === 'transfer'
+                  ? !selectedFromAccount ||
+                    !selectedToAccount ||
+                    selectedFromAccount.id === selectedToAccount.id
+                  : !selectedAccount || (resolvedType === 'expense' && !selectedCategory))
               }
             >
               {saving ? 'Saving…' : 'Save changes'}

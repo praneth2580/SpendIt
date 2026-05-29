@@ -4,15 +4,18 @@ import type {
   AppSettings,
   Category,
   ExtractionRule,
+  RecurringRule,
   Transaction,
 } from '../store/types';
 import { DEFAULT_EXTRACTION_RULES } from './extractionRuleTemplates';
+import { processRecurringRules } from './recurring';
 import {
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
   DEFAULT_SETTINGS,
   DEFAULT_TRANSACTIONS,
 } from './seed';
+import type { PendingRecurringInstance } from '../store/types';
 
 const MAX_SMS_DEDUPE_KEYS = 500;
 
@@ -21,6 +24,10 @@ interface SpendtDB extends DBSchema {
     key: string;
     value: Transaction;
     indexes: { 'by-createdAt': string };
+  };
+  recurringRules: {
+    key: string;
+    value: RecurringRule;
   };
   categories: {
     key: string;
@@ -45,7 +52,7 @@ interface SpendtDB extends DBSchema {
 }
 
 const DB_NAME = 'spendt';
-const DB_VERSION = 5;
+const DB_VERSION = 7;
 
 let dbPromise: Promise<IDBPDatabase<SpendtDB>> | null = null;
 
@@ -53,6 +60,10 @@ function ensureAllStores(db: IDBPDatabase<SpendtDB>) {
   if (!db.objectStoreNames.contains('transactions')) {
     const transactionStore = db.createObjectStore('transactions', { keyPath: 'id' });
     transactionStore.createIndex('by-createdAt', 'createdAt');
+  }
+
+  if (!db.objectStoreNames.contains('recurringRules')) {
+    db.createObjectStore('recurringRules', { keyPath: 'id' });
   }
 
   if (!db.objectStoreNames.contains('categories')) {
@@ -163,15 +174,39 @@ export async function loadPersistedData() {
   try {
     extractionRules = await db.getAll('extractionRules');
   } catch {
-    extractionRules = [];
+    // ignore — store may not exist on older DBs
   }
 
-  const [transactions, categories, accounts, settingsRecord] = await Promise.all([
+  const [transactionsRaw, categoriesRaw, accounts, settingsRecord, recurringRules] = await Promise.all([
     db.getAllFromIndex('transactions', 'by-createdAt'),
     db.getAll('categories'),
     db.getAll('accounts'),
     db.get('settings', 'app'),
+    db.getAll('recurringRules'),
   ]);
+
+  const categories: Category[] = categoriesRaw.map((c) => ({
+    ...c,
+    budgetEnabled: c.budgetEnabled ?? true,
+    rolloverEnabled: c.rolloverEnabled ?? false,
+  }));
+
+  const transactions: Transaction[] = transactionsRaw.map((tx) => {
+    const type = tx.type ?? (tx.amount >= 0 ? 'income' : 'expense');
+    if (type === 'transfer') {
+      return {
+        ...tx,
+        type: 'transfer',
+        amount: Math.abs(tx.amount),
+        accountId: undefined,
+        categoryId: undefined,
+      };
+    }
+    if (type === 'expense') {
+      return { ...tx, type: 'expense', amount: -Math.abs(tx.amount), fromAccountId: undefined, toAccountId: undefined };
+    }
+    return { ...tx, type: 'income', amount: Math.abs(tx.amount), categoryId: undefined, fromAccountId: undefined, toAccountId: undefined };
+  });
 
   transactions.sort(
     (a, b) =>
@@ -179,24 +214,70 @@ export async function loadPersistedData() {
   );
 
   const settings = settingsRecord ?? { key: 'app' as const, ...DEFAULT_SETTINGS };
+  const normalizedSettings = {
+    currency: settings.currency,
+    theme: settings.theme,
+    monthlyBudget: settings.monthlyBudget,
+    startingNetWorth: settings.startingNetWorth,
+    netWorthChangePercent: settings.netWorthChangePercent,
+    smsAutoImport: settings.smsAutoImport ?? DEFAULT_SETTINGS.smsAutoImport,
+    smsImportMode: settings.smsImportMode ?? DEFAULT_SETTINGS.smsImportMode,
+    recurringApplyMode:
+      settings.recurringApplyMode ?? DEFAULT_SETTINGS.recurringApplyMode,
+    recurringMatchWindowDays:
+      settings.recurringMatchWindowDays ?? DEFAULT_SETTINGS.recurringMatchWindowDays,
+    recurringAmountTolerancePercent:
+      settings.recurringAmountTolerancePercent ??
+      DEFAULT_SETTINGS.recurringAmountTolerancePercent,
+  };
+
+  const sortedRules = recurringRules.sort(
+    (a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime(),
+  );
+
+  const recurringResult = processRecurringRules(
+    sortedRules,
+    transactions,
+    normalizedSettings,
+    new Date(),
+    new Set(),
+  );
+
+  const pendingRecurring: PendingRecurringInstance[] = recurringResult.pending;
+
+  if (
+    recurringResult.newTransactions.length > 0 ||
+    recurringResult.updatedTransactionIds.length > 0 ||
+    recurringResult.recurringRules.some(
+      (r, i) => r.nextRunAt !== sortedRules[i]?.nextRunAt || r.active !== sortedRules[i]?.active,
+    )
+  ) {
+    const persistTx = db.transaction(['transactions', 'recurringRules'], 'readwrite');
+    for (const tx of recurringResult.newTransactions) {
+      await persistTx.objectStore('transactions').put(tx);
+    }
+    for (const id of recurringResult.updatedTransactionIds) {
+      const tx = recurringResult.transactions.find((t) => t.id === id);
+      if (tx) await persistTx.objectStore('transactions').put(tx);
+    }
+    for (const rule of recurringResult.recurringRules) {
+      await persistTx.objectStore('recurringRules').put(rule);
+    }
+    await persistTx.done;
+  }
+
   const smsKeysRecord = await db.get('meta', 'smsDedupe');
   const processedSmsKeys = smsKeysRecord?.keys ?? [];
 
   return {
-    transactions,
+    transactions: recurringResult.transactions,
     categories,
     accounts,
-    settings: {
-      currency: settings.currency,
-      theme: settings.theme,
-      monthlyBudget: settings.monthlyBudget,
-      startingNetWorth: settings.startingNetWorth,
-      netWorthChangePercent: settings.netWorthChangePercent,
-      smsAutoImport: settings.smsAutoImport ?? DEFAULT_SETTINGS.smsAutoImport,
-      smsImportMode: settings.smsImportMode ?? DEFAULT_SETTINGS.smsImportMode,
-    },
+    settings: normalizedSettings,
     processedSmsKeys,
     extractionRules: extractionRules.sort((a, b) => a.priority - b.priority),
+    recurringRules: recurringResult.recurringRules,
+    pendingRecurring,
   };
 }
 
@@ -257,10 +338,151 @@ export async function saveSettings(settings: AppSettings) {
   await db.put('settings', { key: 'app', ...settings });
 }
 
+export async function saveRecurringRule(rule: RecurringRule) {
+  const db = await getDb();
+  await db.put('recurringRules', rule);
+}
+
+export async function deleteRecurringRule(id: string) {
+  const db = await getDb();
+  await db.delete('recurringRules', id);
+}
+
+export type SpendtBackupV1 = {
+  schemaVersion: 1;
+  exportedAt: string;
+  db: { name: string; version: number };
+  data: {
+    settings: (AppSettings & { key: 'app' }) | null;
+    accounts: Account[];
+    categories: Category[];
+    transactions: Transaction[];
+    extractionRules: ExtractionRule[];
+    recurringRules: RecurringRule[];
+    meta: Array<{ key: string; seeded?: boolean; keys?: string[] }>;
+  };
+};
+
+export async function exportFullDatabase(): Promise<SpendtBackupV1> {
+  const db = await getDb();
+  const [settings, accounts, categories, transactions, extractionRules, recurringRules, meta] =
+    await Promise.all([
+      db.get('settings', 'app'),
+      db.getAll('accounts'),
+      db.getAll('categories'),
+      db.getAllFromIndex('transactions', 'by-createdAt'),
+      (async () => {
+        try {
+          return await db.getAll('extractionRules');
+        } catch {
+          return [];
+        }
+      })(),
+      db.getAll('recurringRules'),
+      db.getAll('meta'),
+    ]);
+
+  return {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    db: { name: DB_NAME, version: DB_VERSION },
+    data: {
+      settings: settings ?? null,
+      accounts,
+      categories,
+      transactions,
+      extractionRules,
+      recurringRules,
+      meta,
+    },
+  };
+}
+
+export async function restoreFullDatabase(backup: SpendtBackupV1): Promise<void> {
+  const db = await getDb();
+
+  // Clear + re-import inside a single multi-store transaction.
+  const storeNames: Array<
+    'transactions' | 'categories' | 'accounts' | 'settings' | 'meta' | 'extractionRules' | 'recurringRules'
+  > = ['transactions', 'categories', 'accounts', 'settings', 'meta', 'recurringRules'];
+  if (hasExtractionRulesStore(db)) storeNames.push('extractionRules');
+
+  const tx = db.transaction(storeNames, 'readwrite');
+  await Promise.all(storeNames.map((name) => tx.objectStore(name).clear()));
+
+  const data = backup.data;
+  if (data.settings) {
+    await tx.objectStore('settings').put(data.settings);
+  } else {
+    await tx.objectStore('settings').put({ key: 'app', ...DEFAULT_SETTINGS });
+  }
+
+  for (const a of data.accounts ?? []) {
+    await tx.objectStore('accounts').put(a);
+  }
+  for (const c of data.categories ?? []) {
+    await tx.objectStore('categories').put(c);
+  }
+  for (const t of data.transactions ?? []) {
+    await tx.objectStore('transactions').put(t);
+  }
+  for (const r of data.recurringRules ?? []) {
+    await tx.objectStore('recurringRules').put(r);
+  }
+  if (hasExtractionRulesStore(db)) {
+    for (const r of data.extractionRules ?? []) {
+      await tx.objectStore('extractionRules').put(r);
+    }
+  }
+
+  // Meta is last so seed flags/keys are preserved.
+  for (const m of data.meta ?? []) {
+    await tx.objectStore('meta').put(m);
+  }
+
+  // Ensure the DB doesn't re-seed on next boot if backup omitted meta.
+  if (!(data.meta ?? []).some((m) => m.key === 'seed')) {
+    await tx.objectStore('meta').put({ key: 'seed', seeded: true });
+  }
+
+  await tx.done;
+}
+
 /** Deletes IndexedDB and resets the connection so the next read re-seeds defaults. */
 export async function clearDatabase() {
   const db = await getDb();
   db.close();
   dbPromise = null;
   await deleteDB(DB_NAME);
+}
+
+/** Re-run recurring processing and persist (e.g. after confirm/skip). */
+export async function persistRecurringProcessResult(
+  transactions: Transaction[],
+  recurringRules: RecurringRule[],
+  settings: AppSettings,
+): Promise<{
+  transactions: Transaction[];
+  recurringRules: RecurringRule[];
+  pending: PendingRecurringInstance[];
+}> {
+  const result = processRecurringRules(recurringRules, transactions, settings);
+  const db = await getDb();
+  const tx = db.transaction(['transactions', 'recurringRules'], 'readwrite');
+  for (const t of result.newTransactions) {
+    await tx.objectStore('transactions').put(t);
+  }
+  for (const id of result.updatedTransactionIds) {
+    const row = result.transactions.find((r) => r.id === id);
+    if (row) await tx.objectStore('transactions').put(row);
+  }
+  for (const rule of result.recurringRules) {
+    await tx.objectStore('recurringRules').put(rule);
+  }
+  await tx.done;
+  return {
+    transactions: result.transactions,
+    recurringRules: result.recurringRules,
+    pending: result.pending,
+  };
 }

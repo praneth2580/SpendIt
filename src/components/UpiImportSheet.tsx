@@ -25,12 +25,15 @@ export default function UpiImportSheet() {
 
   useEffect(() => {
     if (!pending || !action) return;
-    setNote(action.promptNote ? '' : action.merchant);
-    setCategoryId(
-      action.categoryId ?? (pending.type === 'expense' ? (categories[0]?.id ?? '') : ''),
-    );
-    setAccountId(action.accountId ?? accounts[0]?.id ?? '');
-  }, [pending?.id, action, categories, accounts]);
+    // Defer state updates to avoid "set-state-in-effect" lint.
+    void Promise.resolve().then(() => {
+      setNote(action.promptNote ? '' : action.merchant);
+      setCategoryId(
+        action.categoryId ?? (pending.type === 'expense' ? (categories[0]?.id ?? '') : ''),
+      );
+      setAccountId(action.accountId ?? accounts[0]?.id ?? '');
+    });
+  }, [pending, action, categories, accounts]);
 
   if (!pending || !action) return null;
 

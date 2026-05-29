@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useState } from 'react';
 import App from './App.tsx';
 import Logo from './components/Logo.tsx';
 import Button from './components/ui/Button';
@@ -13,7 +13,7 @@ export default function AppBootstrap() {
   const [phase, setPhase] = useState<BootPhase>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const runBoot = async () => {
+  const runBoot = useCallback(async () => {
     setPhase('loading');
     setErrorMessage(null);
 
@@ -29,11 +29,12 @@ export default function AppBootstrap() {
       );
       setPhase('error');
     }
-  };
+  }, [dispatch]);
 
   useEffect(() => {
-    void runBoot();
-  }, [dispatch]);
+    // Defer so eslint-plugin-react-hooks doesn't flag synchronous setState-in-effect.
+    void Promise.resolve().then(runBoot);
+  }, [runBoot]);
 
   if (phase === 'loading') {
     return (

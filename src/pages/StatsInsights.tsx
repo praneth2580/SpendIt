@@ -21,10 +21,14 @@ export default function StatsInsights() {
     () => computePreviousMonthSpent(transactions),
     [transactions],
   );
-  const topCategory = useMemo(() => getTopCategory(categories), [categories]);
-  const sortedCategories = useMemo(
-    () => [...categories].sort((a, b) => b.spent - a.spent),
+  const budgetCategories = useMemo(
+    () => categories.filter((c) => c.budgetEnabled),
     [categories],
+  );
+  const topCategory = useMemo(() => getTopCategory(budgetCategories), [budgetCategories]);
+  const sortedCategories = useMemo(
+    () => [...budgetCategories].sort((a, b) => b.spent - a.spent),
+    [budgetCategories],
   );
   const netSavings = monthlyIncome - user.monthlySpent;
   const spendingChange =

@@ -25,6 +25,15 @@ export async function initCapacitor() {
     }
 
     await SplashScreen.hide();
+
+    try {
+      const { ensureRecurringNotificationPermission } = await import(
+        './recurringNotifications'
+      );
+      await ensureRecurringNotificationPermission();
+    } catch {
+      // optional — notifications plugin may be unavailable on web assets
+    }
   } catch (error) {
     console.warn('[capacitor] init failed, continuing into app', error);
     try {

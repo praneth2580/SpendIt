@@ -1,12 +1,15 @@
 import { Outlet } from 'react-router-dom';
+import { useRecurringBackground } from '../hooks/useRecurringBackground';
 import { useUpiSmsListener } from '../hooks/useUpiSmsListener';
 import TopAppBar from './TopAppBar';
 import BottomNavBar from './BottomNavBar';
 import UpiImportSheet from './UpiImportSheet';
+import RecurringImportSheet from './RecurringImportSheet';
 import PwaUpdateBanner from './PwaUpdateBanner';
 
 export default function Layout() {
   useUpiSmsListener();
+  useRecurringBackground();
 
   return (
     <div className="relative min-h-screen bg-app text-fg">
@@ -26,6 +29,7 @@ export default function Layout() {
       </main>
       <BottomNavBar />
       <UpiImportSheet />
+      <RecurringImportSheet />
       <PwaUpdateBanner />
     </div>
   );

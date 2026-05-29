@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "homepage": "https://praneth2580.github.io/SpendIt",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,11 +15,14 @@
     "deploy": "gh-pages -d dist",
     "lint": "eslint .",
     "preview": "vite preview",
-    "cap:sync": "npm run build && cap sync",
-    "cap:android": "cap open android",
-    "cap:ios": "cap open ios",
-    "cap:run:android": "npm run cap:sync && cap run android",
-    "cap:run:ios": "npm run cap:sync && cap run ios"
+    "cap:sync": "npm run build && bash scripts/cap.sh sync",
+    "cap:android": "npm run cap:sync && bash scripts/android-cli.sh run",
+    "cap:android:apk": "npm run cap:sync && bash scripts/android-cli.sh build",
+    "cap:android:install": "bash scripts/android-cli.sh install",
+    "cap:android:devices": "bash scripts/android-cli.sh devices",
+    "cap:ios": "bash scripts/cap.sh run ios",
+    "cap:run:android": "npm run cap:android",
+    "cap:run:ios": "npm run cap:sync && bash scripts/cap.sh run ios"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.0",

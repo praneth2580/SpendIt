@@ -18,11 +18,16 @@
     "cap:sync": "npm run build && bash scripts/cap.sh sync",
     "cap:android": "npm run cap:sync && bash scripts/android-cli.sh run",
     "cap:android:apk": "npm run cap:sync && bash scripts/android-cli.sh build",
+    "cap:android:keystore": "bash scripts/android-keystore.sh",
+    "cap:android:keystore:export": "bash scripts/android-keystore-export.sh",
+    "cap:android:keystore:import": "bash scripts/android-keystore-import.sh",
+    "cap:android:release": "bash scripts/android-release-apk.sh",
     "cap:android:install": "bash scripts/android-cli.sh install",
     "cap:android:devices": "bash scripts/android-cli.sh devices",
     "cap:ios": "bash scripts/cap.sh run ios",
     "cap:run:android": "npm run cap:android",
-    "cap:run:ios": "npm run cap:sync && bash scripts/cap.sh run ios"
+    "cap:run:ios": "npm run cap:sync && bash scripts/cap.sh run ios",
+    "icons:generate": "python3 scripts/generate-brand-icons.py"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.0",

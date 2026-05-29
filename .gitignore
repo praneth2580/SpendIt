@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Android release signing (never commit secrets)
+android/keystore.properties
+android/*.keystore
+*.keystore
+spendt-keystore-backup/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

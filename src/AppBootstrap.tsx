@@ -39,7 +39,8 @@ export default function AppBootstrap() {
     return (
       <div className="min-h-screen bg-app text-fg flex items-center justify-center">
         <div className="flex flex-col items-center gap-5 animate-fade-in">
-          <Logo size="lg" showWordmark subtitle="Personal finance" />
+          <Logo size="lg" />
+          <p className="text-muted text-[14px] font-medium">Personal finance</p>
           <div className="h-9 w-9 rounded-full border-2 border-brand/20 border-t-brand animate-spin" />
         </div>
       </div>
@@ -50,7 +51,7 @@ export default function AppBootstrap() {
     return (
       <div className="min-h-screen bg-app text-fg flex items-center justify-center p-6">
         <div className="max-w-sm w-full flex flex-col gap-4 text-center">
-          <Logo size="md" showWordmark />
+          <Logo size="md" />
           <p className="text-muted text-[14px]">{errorMessage}</p>
           <Button onClick={() => void runBoot()}>Try again</Button>
         </div>

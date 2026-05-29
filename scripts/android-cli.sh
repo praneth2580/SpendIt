@@ -7,37 +7,11 @@ cd "$ROOT"
 
 APK_DEBUG="$ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
 
-# shellcheck source=android-java.sh
-source "$ROOT/scripts/android-java.sh"
-
-configure_android_sdk() {
-  if [[ -f "$ROOT/.env.capacitor.local" ]]; then
-    set -a
-    # shellcheck source=/dev/null
-    . "$ROOT/.env.capacitor.local"
-    set +a
-  fi
-
-  configure_java_for_android
-
-  if [[ -z "${ANDROID_HOME:-}" && -d "$HOME/Android/Sdk" ]]; then
-    export ANDROID_HOME="$HOME/Android/Sdk"
-  fi
-
-  if [[ -n "${ANDROID_HOME:-}" ]]; then
-    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-  fi
-
-  # Never launch Android Studio from Capacitor CLI.
-  unset CAPACITOR_ANDROID_STUDIO_PATH
-}
+# shellcheck source=android-env.sh
+source "$ROOT/scripts/android-env.sh"
 
 require_sdk() {
-  configure_android_sdk
-  if [[ -z "${ANDROID_HOME:-}" || ! -d "$ANDROID_HOME" ]]; then
-    echo "ANDROID_HOME is not set and ~/Android/Sdk was not found." >&2
-    exit 1
-  fi
+  require_android_sdk
 }
 
 cmd_build() {
@@ -82,7 +56,9 @@ Usage: android-cli.sh <command>
 
 Examples:
   npm run cap:android          # sync web assets + run on device
-  npm run cap:android:apk      # build APK only
+  npm run cap:android:apk      # build debug APK only
+  npm run cap:android:keystore # create release keystore (once)
+  npm run cap:android:release  # build signed release APK
   npm run cap:android:install  # install last debug APK
 EOF
 }

@@ -38,7 +38,7 @@ export default function TopAppBar() {
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4">
         <NavLink to="/" className="min-w-0 hover:opacity-90 transition-opacity">
-          <Logo size="sm" subtitle={title} />
+          <Logo size="sm" subtitle={title} className="min-w-0" />
         </NavLink>
 
         <nav className="hidden md:flex items-center gap-1 rounded-2xl bg-surface-2 border border-border p-1">

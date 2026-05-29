@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.spendt.app',
-  appName: 'Spendt',
+  appName: 'SpendIt',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
@@ -10,7 +10,7 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: {
       launchAutoHide: false,
-      backgroundColor: '#000000',
+      backgroundColor: '#0b1616',
       showSpinner: false,
     },
     StatusBar: {

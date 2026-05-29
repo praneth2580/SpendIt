@@ -1,56 +1,37 @@
 import clsx from 'clsx';
 
+const LOGO_SRC = `${import.meta.env.BASE_URL}new_logo.png`;
+
 type LogoProps = {
   size?: 'sm' | 'md' | 'lg';
-  showWordmark?: boolean;
+  /** Optional line beside the mark (e.g. page title). Brand name is in the image. */
   subtitle?: string;
   className?: string;
 };
 
 const sizeClasses = {
-  sm: 'h-9 w-9',
-  md: 'h-11 w-11',
-  lg: 'h-14 w-14',
+  sm: 'h-10 w-10',
+  md: 'h-14 w-14',
+  lg: 'h-28 w-28',
 } as const;
 
-const wordmarkSizeClasses = {
-  sm: 'text-[16px]',
-  md: 'text-[18px]',
-  lg: 'text-[24px]',
-} as const;
-
-export default function Logo({
-  size = 'sm',
-  showWordmark = true,
-  subtitle,
-  className,
-}: LogoProps) {
+export default function Logo({ size = 'sm', subtitle, className }: LogoProps) {
   return (
     <div className={clsx('flex items-center gap-3 min-w-0', className)}>
-      <div
-        className={clsx(
-          sizeClasses[size],
-          'shrink-0 rounded-2xl bg-gradient-to-br from-brand to-accent-violet flex items-center justify-center shadow-brand',
-        )}
-      >
-        <span className="text-brand-fg font-bold text-[15px]">S</span>
-      </div>
+      <img
+        src={LOGO_SRC}
+        alt="SpendIt"
+        width={size === 'lg' ? 112 : size === 'md' ? 56 : 40}
+        height={size === 'lg' ? 112 : size === 'md' ? 56 : 40}
+        className={clsx(sizeClasses[size], 'shrink-0 rounded-2xl object-cover')}
+        decoding="async"
+      />
 
-      {showWordmark ? (
+      {subtitle ? (
         <div className="flex flex-col leading-tight min-w-0">
-          <span
-            className={clsx(
-              'text-fg font-semibold tracking-tight',
-              wordmarkSizeClasses[size],
-            )}
-          >
-            Spendt
+          <span className="text-fg font-semibold tracking-tight text-[16px] truncate">
+            {subtitle}
           </span>
-          {subtitle ? (
-            <span className="text-muted text-[11px] font-medium truncate">
-              {subtitle}
-            </span>
-          ) : null}
         </div>
       ) : null}
     </div>

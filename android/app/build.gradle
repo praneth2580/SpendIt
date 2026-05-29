@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.spendt.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +22,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias keystoreProperties['keyAlias']
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                // Prefer properties file, fallback to env vars for CI / safer local setup.
+                def envStorePassword = System.getenv('SPENDT_STORE_PASSWORD')
+                def envKeyPassword = System.getenv('SPENDT_KEY_PASSWORD')
+                storePassword (keystoreProperties['storePassword'] ?: envStorePassword)
+                // PKCS12 requires keyPassword == storePassword (keytool enforces this).
+                keyPassword (keystoreProperties['keyPassword'] ?: envKeyPassword ?: keystoreProperties['storePassword'] ?: envStorePassword)
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

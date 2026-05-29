@@ -1,0 +1,1 @@
+import{n as e}from"./dist-CQS6rvaI.js";var t=class extends e{async checkPermissions(){return{sms:`denied`}}async requestPermissions(){return{sms:`denied`}}async getPending(){return{messages:[]}}};export{t as UpiSmsWeb};

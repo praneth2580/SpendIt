@@ -7,9 +7,19 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cap sync",
+    "cap:android": "cap open android",
+    "cap:ios": "cap open ios",
+    "cap:run:android": "npm run cap:sync && cap run android",
+    "cap:run:ios": "npm run cap:sync && cap run ios"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/keyboard": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "axios": "^1.15.2",
     "clsx": "^2.1.1",
     "idb": "^8.0.3",
@@ -23,6 +33,9 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/ios": "^8.3.4",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",

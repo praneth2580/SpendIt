@@ -1,7 +1,8 @@
 import { useStore } from '../store/useStore';
+import { formatTransactionDate } from '../lib/format';
 
 export default function Transactions() {
-  const { transactions } = useStore();
+  const { transactions, settings, deleteTransaction } = useStore();
 
   return (
     <div className="flex flex-col gap-4">
@@ -29,6 +30,11 @@ export default function Transactions() {
               <button
                 key={transaction.id}
                 type="button"
+                onClick={() => {
+                  if (window.confirm(`Delete "${transaction.merchant}"?`)) {
+                    void deleteTransaction(transaction.id);
+                  }
+                }}
                 className="w-full text-left px-4 py-4 hover:bg-white/5 active:bg-white/10 transition-colors"
               >
                 <div className="flex items-center justify-between gap-4">
@@ -50,7 +56,7 @@ export default function Transactions() {
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-white font-medium truncate">{transaction.merchant}</span>
-                      <span className="text-on-surface-variant text-[12px]">{transaction.date}</span>
+                      <span className="text-on-surface-variant text-[12px]">{formatTransactionDate(transaction.createdAt)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -60,7 +66,7 @@ export default function Transactions() {
                       }`}
                     >
                       {transaction.amount > 0 ? '+' : ''}
-                      {transaction.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                      {transaction.amount.toLocaleString('en-US', { style: 'currency', currency: settings.currency })}
                     </span>
                     <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
                       chevron_right

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -15,26 +15,20 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState(initialAmount);
   const [note, setNote] = useState(initialNote);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('food');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [showKeypad, setShowKeypad] = useState(true);
-  const { addTransaction } = useStore();
+  const { addTransaction, categories } = useStore();
   const navigate = useNavigate();
 
-  const categories = useMemo(
-    () =>
-      [
-        { id: 'food', name: 'Food', icon: 'restaurant' },
-        { id: 'transit', name: 'Transit', icon: 'directions_car' },
-        { id: 'shopping', name: 'Shopping', icon: 'shopping_bag' },
-        { id: 'bills', name: 'Bills', icon: 'receipt_long' },
-      ] as const,
-    []
-  );
+  useEffect(() => {
+    if (categories.length > 0 && !selectedCategoryId) {
+      setSelectedCategoryId(categories[0].id);
+    }
+  }, [categories, selectedCategoryId]);
 
-  const selectedCategory = useMemo(
-    () => categories.find((c) => c.id === selectedCategoryId) ?? categories[0],
-    [categories, selectedCategoryId]
-  );
+  const selectedCategory =
+    categories.find((category) => category.id === selectedCategoryId) ??
+    categories[0];
 
   const parsedAmount = Number.parseFloat(amount);
   const amountIsValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
@@ -58,16 +52,17 @@ export default function QuickAddExpense({ embedded = false, onDone }: QuickAddEx
     return n.toFixed(2);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amountIsValid) return;
+    if (!amountIsValid || !selectedCategory) return;
 
-    addTransaction({
+    await addTransaction({
       merchant: note.trim() || selectedCategory.name,
-      date: 'Just now',
       amount: type === 'expense' ? -Math.abs(parsedAmount) : Math.abs(parsedAmount),
       icon: selectedCategory.icon,
       iconColor: 'white',
+      categoryId: type === 'expense' ? selectedCategory.id : undefined,
+      type,
     });
 
     if (onDone) onDone();

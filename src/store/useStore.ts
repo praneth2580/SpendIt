@@ -1,12 +1,27 @@
 import { create } from 'zustand';
+import { v4 as uuidv4 } from 'uuid';
+import {
+  computeMonthlySpent,
+  computeTotalNetWorth,
+  syncCategorySpent,
+} from '../lib/aggregates';
+import {
+  deleteStoredTransaction,
+  loadPersistedData,
+  saveAllCategories,
+  saveSettings,
+  saveTransaction,
+} from '../lib/db';
 
 export interface Transaction {
   id: string;
   merchant: string;
-  date: string;
+  createdAt: string;
   amount: number;
   icon: string;
   iconColor: 'white' | 'primary' | 'secondary' | 'tertiary';
+  categoryId?: string;
+  type: 'expense' | 'income';
 }
 
 export interface Category {
@@ -18,93 +33,151 @@ export interface Category {
   color: 'primary' | 'secondary' | 'tertiary';
 }
 
-interface AppState {
-  user: {
-    totalNetWorth: number;
-    monthlySpent: number;
-    monthlyBudget: number;
-    netWorthChangePercent: number;
-  };
-  transactions: Transaction[];
-  categories: Category[];
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
-  updateBudget: (amount: number) => void;
+export interface AppSettings {
+  currency: string;
+  theme: 'dark' | 'light' | 'system';
+  monthlyBudget: number;
+  startingNetWorth: number;
+  netWorthChangePercent: number;
 }
 
-export const useStore = create<AppState>((set) => ({
+interface UserSummary {
+  totalNetWorth: number;
+  monthlySpent: number;
+  monthlyBudget: number;
+  netWorthChangePercent: number;
+}
+
+interface AppState {
+  hydrated: boolean;
+  user: UserSummary;
+  settings: AppSettings;
+  transactions: Transaction[];
+  categories: Category[];
+  hydrate: () => Promise<void>;
+  addTransaction: (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>,
+  ) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
+  updateBudget: (amount: number) => Promise<void>;
+  updateSettings: (partial: Partial<AppSettings>) => Promise<void>;
+}
+
+function buildUserSummary(
+  transactions: Transaction[],
+  settings: AppSettings,
+): UserSummary {
+  return {
+    totalNetWorth: computeTotalNetWorth(
+      transactions,
+      settings.startingNetWorth,
+    ),
+    monthlySpent: computeMonthlySpent(transactions),
+    monthlyBudget: settings.monthlyBudget,
+    netWorthChangePercent: settings.netWorthChangePercent,
+  };
+}
+
+function withDerivedState(
+  transactions: Transaction[],
+  categories: Category[],
+  settings: AppSettings,
+) {
+  const syncedCategories = syncCategorySpent(categories, transactions);
+
+  return {
+    transactions,
+    categories: syncedCategories,
+    settings,
+    user: buildUserSummary(transactions, settings),
+  };
+}
+
+export const useStore = create<AppState>((set, get) => ({
+  hydrated: false,
   user: {
-    totalNetWorth: 142500.00,
-    monthlySpent: 4250.00,
-    monthlyBudget: 6000.00,
-    netWorthChangePercent: 12.4,
+    totalNetWorth: 0,
+    monthlySpent: 0,
+    monthlyBudget: 0,
+    netWorthChangePercent: 0,
   },
-  transactions: [
-    {
-      id: '1',
-      merchant: 'Apple Store',
-      date: 'Today, 2:45 PM',
-      amount: -1299.00,
-      icon: 'ios',
-      iconColor: 'white',
-    },
-    {
-      id: '2',
-      merchant: 'Salary Deposit',
-      date: 'Yesterday',
-      amount: 5400.00,
-      icon: 'arrow_downward',
-      iconColor: 'secondary',
-    },
-    {
-      id: '3',
-      merchant: 'Artisan Coffee',
-      date: 'Aug 12',
-      amount: -6.50,
-      icon: 'local_cafe',
-      iconColor: 'white',
-    },
-  ],
-  categories: [
-    {
-      id: 'c1',
-      name: 'Shopping',
-      spent: 1240,
-      budget: 2000,
-      icon: 'shopping_cart',
-      color: 'primary',
-    },
-    {
-      id: 'c2',
-      name: 'Dining',
-      spent: 850,
-      budget: 1500,
-      icon: 'restaurant',
-      color: 'tertiary',
-    },
-    {
-      id: 'c3',
-      name: 'Travel',
-      spent: 2100,
-      budget: 2500,
-      icon: 'flight_takeoff',
-      color: 'secondary',
-    },
-  ],
-  addTransaction: (transaction) => set((state) => ({
-    transactions: [
-      { ...transaction, id: Math.random().toString(36).substr(2, 9) },
-      ...state.transactions,
-    ],
-    user: {
-      ...state.user,
-      totalNetWorth: state.user.totalNetWorth + transaction.amount,
-      monthlySpent: transaction.amount < 0 ? state.user.monthlySpent + Math.abs(transaction.amount) : state.user.monthlySpent,
-    }
-  })),
-  updateBudget: (amount) => set((state) => ({
-    user: {
-      ...state.user,
-      monthlyBudget: amount,
-    }
-  })),
+  settings: {
+    currency: 'USD',
+    theme: 'dark',
+    monthlyBudget: 0,
+    startingNetWorth: 0,
+    netWorthChangePercent: 0,
+  },
+  transactions: [],
+  categories: [],
+
+  hydrate: async () => {
+    const data = await loadPersistedData();
+    set({
+      hydrated: true,
+      ...withDerivedState(data.transactions, data.categories, data.settings),
+    });
+  },
+
+  addTransaction: async (transaction) => {
+    const nextTransaction: Transaction = {
+      ...transaction,
+      id: uuidv4(),
+      createdAt: new Date().toISOString(),
+    };
+
+    const state = get();
+    const nextTransactions = [nextTransaction, ...state.transactions];
+    const nextState = withDerivedState(
+      nextTransactions,
+      state.categories,
+      state.settings,
+    );
+
+    set(nextState);
+    await saveTransaction(nextTransaction);
+    await saveAllCategories(nextState.categories);
+  },
+
+  deleteTransaction: async (id) => {
+    const state = get();
+    const nextTransactions = state.transactions.filter(
+      (transaction) => transaction.id !== id,
+    );
+    const nextState = withDerivedState(
+      nextTransactions,
+      state.categories,
+      state.settings,
+    );
+
+    set(nextState);
+    await deleteStoredTransaction(id);
+    await saveAllCategories(nextState.categories);
+  },
+
+  updateBudget: async (amount) => {
+    const state = get();
+    const nextSettings = { ...state.settings, monthlyBudget: amount };
+    const nextState = withDerivedState(
+      state.transactions,
+      state.categories,
+      nextSettings,
+    );
+
+    set(nextState);
+    await saveSettings(nextSettings);
+  },
+
+  updateSettings: async (partial) => {
+    const state = get();
+    const nextSettings = { ...state.settings, ...partial };
+    const nextState = withDerivedState(
+      state.transactions,
+      state.categories,
+      nextSettings,
+    );
+
+    set(nextState);
+    await saveSettings(nextSettings);
+  },
 }));

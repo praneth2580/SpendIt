@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 
 export default function BottomNavBar() {
   return (
-    <nav className="bg-black/80 text-[10px] font-medium uppercase tracking-widest fixed bottom-0 left-0 w-full flex justify-around items-end px-4 pt-2 pb-5 md:hidden z-50 rounded-t-3xl border-t border-white/10 backdrop-blur-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.55)] transition-all duration-300">
+    <nav className="bg-black/80 text-[10px] font-medium uppercase tracking-widest fixed bottom-0 left-0 w-full flex justify-around items-end px-4 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:hidden z-50 rounded-t-3xl border-t border-white/10 backdrop-blur-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.55)] transition-all duration-300">
       <NavLink 
         to="/" 
         className={({isActive}) => `flex flex-col items-center justify-center transition-transform ${isActive ? 'text-primary-container scale-105' : 'text-on-surface-variant hover:text-white'}`}

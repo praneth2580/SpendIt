@@ -1,8 +1,22 @@
 import { useStore } from '../store/useStore';
 import { Link } from 'react-router-dom';
+import { formatTransactionDate } from '../lib/format';
 
 export default function Dashboard() {
-  const { user, categories, transactions } = useStore();
+  const { user, categories, transactions, settings } = useStore();
+
+  const monthlyBudgetTotal = categories.reduce(
+    (sum, category) => sum + category.budget,
+    0,
+  );
+  const budgetSegments = categories.map((category) => ({
+    id: category.id,
+    width:
+      monthlyBudgetTotal > 0
+        ? (category.spent / monthlyBudgetTotal) * 100
+        : 0,
+    color: category.color,
+  }));
 
   return (
     <>
@@ -61,9 +75,13 @@ export default function Dashboard() {
             </div>
             
             <div className="w-full h-4 bg-background rounded-full overflow-hidden flex shadow-inner">
-              <div className="h-full bg-primary-container w-[40%] rounded-r-full shadow-[0_0_10px_rgba(0,229,255,0.5)]"></div>
-              <div className="h-full bg-tertiary-container w-[15%] rounded-r-full -ml-2"></div>
-              <div className="h-full bg-secondary-container w-[15%] rounded-r-full -ml-2"></div>
+              {budgetSegments.map((segment, index) => (
+                <div
+                  key={segment.id}
+                  className={`h-full bg-${segment.color}-container rounded-r-full ${index > 0 ? '-ml-2' : ''}`}
+                  style={{ width: `${Math.min(100, segment.width)}%` }}
+                />
+              ))}
             </div>
           </section>
 
@@ -115,11 +133,11 @@ export default function Dashboard() {
                     </div>
                     <div className="flex flex-col">
                       <span className="font-body-lg text-body-lg text-white font-medium">{transaction.merchant}</span>
-                      <span className="font-body-md text-[14px] text-on-surface-variant">{transaction.date}</span>
+                      <span className="font-body-md text-[14px] text-on-surface-variant">{formatTransactionDate(transaction.createdAt)}</span>
                     </div>
                   </div>
                   <span className={`font-body-lg text-body-lg font-medium ${transaction.amount > 0 ? 'text-secondary-container' : 'text-white'}`}>
-                    {transaction.amount > 0 ? '+' : ''}{transaction.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                    {transaction.amount > 0 ? '+' : ''}{transaction.amount.toLocaleString('en-US', { style: 'currency', currency: settings.currency })}
                   </span>
                 </div>
               ))}

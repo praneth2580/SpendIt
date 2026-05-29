@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">spendt</string>
+    <string name="title_activity_main">spendt</string>
+    <string name="package_name">com.spendt.app</string>
+    <string name="custom_url_scheme">com.spendt.app</string>
+</resources>
